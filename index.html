@@ -639,11 +639,28 @@ function getResultMessage(result) {
 // ═══════════════════════════════════════════════════════════════
 
 async function saveToSheet(barcode, rack) {
-  // GAS Web Apps work best with GET + URL params when using no-cors
-  const url = `${APPS_SCRIPT_URL}?action=save&barcode=${encodeURIComponent(barcode)}&rack=${encodeURIComponent(rack)}`;
-  const response = await fetch(url);
-  if (!response.ok) throw new Error('HTTP ' + response.status);
-  return await response.json();
+  const url = `${APPS_SCRIPT_URL}?action=save&barcode=${encodeURIComponent(barcode)}&rack=${encodeURIComponent(rack)}&callback=cb`;
+  
+  return new Promise((resolve, reject) => {
+    // Use JSONP to bypass CORS — GAS supports this natively
+    const script = document.createElement('script');
+    const callbackName = 'cb_' + Date.now();
+    
+    window[callbackName] = function(data) {
+      delete window[callbackName];
+      document.body.removeChild(script);
+      resolve(data);
+    };
+    
+    script.src = `${APPS_SCRIPT_URL}?action=save&barcode=${encodeURIComponent(barcode)}&rack=${encodeURIComponent(rack)}&callback=${callbackName}`;
+    script.onerror = () => {
+      delete window[callbackName];
+      document.body.removeChild(script);
+      reject(new Error('Request failed'));
+    };
+    
+    document.body.appendChild(script);
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════
