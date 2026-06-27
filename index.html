@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#1A1F2E" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Rack Scanner</title>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&family=Roboto+Mono:wght@500;700&display=swap" rel="stylesheet" />
+
+<style>
+/* ── Tokens ─────────────────────────────── */
+:root {
+  --bg:           #1A1F2E;
+  --bg-card:      #242A3A;
+  --bg-modal:     #0D1017;
+  --border:       #2E3650;
+  --amber:        #FFA500;
+  --amber-dim:    #CC8400;
+  --green:        #00C851;
+  --red:          #FF4444;
+  --blue:         #4A9EFF;
+  --text-primary: #F0F2F8;
+  --text-muted:   #7A84A0;
+  --text-scan:    #E8ECF8;
+  --font-ui:      'Inter', system-ui, sans-serif;
+  --font-mono:    'Roboto Mono', 'Courier New', monospace;
+  --radius:       10px;
+  --radius-lg:    16px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* ── Rack Label Bar (signature element) ── */
+.rack-label-bar {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  background: var(--bg-card);
+  border-bottom: 2px solid var(--border);
+  box-shadow: 0 2px 12px rgba(0,0,0,0.4);
+  border-left: 5px solid var(--amber);
+}
+
+.rack-label-eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  flex-shrink: 0;
+  min-width: 90px;
+}
+
+.rack-label-value {
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--amber);
+  letter-spacing: 0.04em;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rack-label-value.no-rack {
+  color: var(--text-muted);
+  font-size: 16px;
+}
+
+.rack-label-icon {
+  font-size: 12px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  transition: color 0.3s;
+}
+
+.rack-label-icon.active {
+  color: var(--green);
+  animation: pulse-dot 2s infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.3; }
+}
+
+/* ── Toast ───────────────────────────────── */
+.toast {
+  position: fixed;
+  top: 80px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-20px);
+  z-index: 200;
+  min-width: 280px;
+  max-width: 90vw;
+  padding: 14px 22px;
+  border-radius: var(--radius-lg);
+  font-size: 15px;
+  font-weight: 700;
+  text-align: center;
+  letter-spacing: 0.02em;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  box-shadow: 0 6px 32px rgba(0,0,0,0.5);
+}
+
+.toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.toast.success { background: var(--green);  color: #000; }
+.toast.warning { background: var(--amber);  color: #000; }
+.toast.error   { background: var(--red);    color: #fff; }
+.toast.info    { background: var(--blue);   color: #fff; }
+
+/* ── Main Content ────────────────────────── */
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px 16px;
+  max-width: 500px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* ── Buttons ─────────────────────────────── */
+.button-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  border: none;
+  border-radius: var(--radius-lg);
+  font-family: var(--font-ui);
+  font-weight: 900;
+  font-size: 20px;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  padding: 22px 20px;
+  transition: transform 0.1s, opacity 0.2s;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
+  width: 100%;
+}
+
+.btn:active { transform: scale(0.97); }
+.btn-icon { font-size: 22px; flex-shrink: 0; }
+.btn-label { letter-spacing: 0.08em; }
+
+.btn-rack {
+  background: var(--amber);
+  color: #000;
+  box-shadow: 0 4px 24px rgba(255,165,0,0.3);
+  border-left: 5px solid var(--amber-dim);
+}
+
+.btn-product {
+  background: var(--bg-card);
+  color: var(--green);
+  border: 2px solid var(--green);
+  box-shadow: 0 4px 24px rgba(0,200,81,0.15);
+}
+
+.btn-product:disabled {
+  color: var(--text-muted);
+  border-color: var(--border);
+  box-shadow: none;
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Last Scan Card ─────────────────────── */
+.last-scan-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 16px 18px;
+}
+
+.last-scan-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.last-scan-barcode {
+  font-family: var(--font-mono);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-scan);
+  margin-bottom: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.last-scan-result {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.last-scan-result.success  { color: var(--green); }
+.last-scan-result.warning  { color: var(--amber); }
+.last-scan-result.error    { color: var(--red); }
+
+/* ── Stats ───────────────────────────────── */
+.stats-row {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 4px;
+}
+
+.stat-pill {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 8px;
+}
+
+.stat-num {
+  font-family: var(--font-mono);
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1;
+}
+
+.stat-lbl {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+/* ── Scan Modal ──────────────────────────── */
+.scan-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  background: var(--bg-modal);
+  display: flex;
+  flex-direction: column;
+}
+
+.scan-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-card);
+  flex-shrink: 0;
+}
+
+.scan-modal-mode {
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.15em;
+  color: var(--amber);
+}
+
+.btn-close {
+  background: var(--border);
+  border: none;
+  color: var(--text-primary);
+  font-size: 18px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  flex-shrink: 0;
+  touch-action: manipulation;
+}
+
+.scan-modal-body {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+#html5qr-code-full-region {
+  width: 100% !important;
+  height: 100% !important;
+  border: none !important;
+}
+
+#html5qr-code-full-region video {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+}
+
+#html5qr-code-full-region img { display: none !important; }
+#html5qr-code-full-region__dashboard { display: none !important; }
+
+.scan-modal-hint {
+  padding: 14px 20px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  background: var(--bg-card);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+/* ── Saving indicator ───────────────────── */
+.saving-bar {
+  position: fixed;
+  bottom: calc(env(safe-area-inset-bottom) + 16px);
+  right: 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 8px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.06em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  opacity: 0;
+  transition: opacity 0.2s;
+  pointer-events: none;
+  z-index: 50;
+}
+
+.saving-bar.show { opacity: 1; }
+
+.spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border);
+  border-top-color: var(--amber);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (min-height: 700px) {
+  .btn { padding: 26px 20px; font-size: 22px; }
+  .stat-num { font-size: 32px; }
+}
+</style>
+</head>
+<body>
+
+  <!-- Rack Label Bar — always visible -->
+  <div class="rack-label-bar" id="rackLabelBar">
+    <span class="rack-label-eyebrow">CURRENT RACK</span>
+    <span class="rack-label-value no-rack" id="currentRackDisplay">NONE</span>
+    <span class="rack-label-icon" id="rackStatusIcon">⬤</span>
+  </div>
+
+  <!-- Toast notification -->
+  <div class="toast" id="toast" role="alert" aria-live="polite"></div>
+
+  <!-- Main content -->
+  <main class="main-content">
+    <div class="button-grid">
+      <button class="btn btn-rack" id="btnScanRack" onclick="startScan('rack')">
+        <span class="btn-icon">⬛</span>
+        <span class="btn-label">SCAN RACK</span>
+      </button>
+      <button class="btn btn-product" id="btnScanProduct" onclick="startScan('product')" disabled>
+        <span class="btn-icon">▦</span>
+        <span class="btn-label">SCAN PRODUCT</span>
+      </button>
+    </div>
+
+    <div class="last-scan-card" id="lastScanCard" style="display:none;">
+      <div class="last-scan-label">LAST SCAN</div>
+      <div class="last-scan-barcode" id="lastScanBarcode">—</div>
+      <div class="last-scan-result" id="lastScanResult">—</div>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat-pill">
+        <span class="stat-num" id="statScans">0</span>
+        <span class="stat-lbl">scanned</span>
+      </div>
+      <div class="stat-pill">
+        <span class="stat-num" id="statAdded">0</span>
+        <span class="stat-lbl">added</span>
+      </div>
+      <div class="stat-pill">
+        <span class="stat-num" id="statDupe">0</span>
+        <span class="stat-lbl">duplicate</span>
+      </div>
+    </div>
+  </main>
+
+  <!-- Full-screen scan modal -->
+  <div class="scan-modal" id="scanModal" style="display:none;">
+    <div class="scan-modal-header">
+      <span class="scan-modal-mode" id="scanModalMode">SCAN RACK</span>
+      <button class="btn-close" onclick="closeScanner()">✕</button>
+    </div>
+    <div class="scan-modal-body">
+      <div id="html5qr-code-full-region"></div>
+    </div>
+    <div class="scan-modal-hint" id="scanModalHint">Align QR code or barcode in the frame</div>
+  </div>
+
+<script>
+/**
+ * ═══════════════════════════════════════════════════════════════
+ * WAREHOUSE RACK SCANNER — app.js (inlined)
+ *
+ * IMPORTANT: Replace the URL below with your deployed
+ * Google Apps Script Web App URL.
+ * ═══════════════════════════════════════════════════════════════
+ */
+
+// ▶ REPLACE THIS with your deployed Apps Script URL
+const APPS_SCRIPT_URL = 'https://script.googleusercontent.com/macros/echo?user_content_key=AUkAhnRmhoxjMGmlK1-AK16nqfgjz7tE3YI6CLkibGrZBPvkLnSdwWiHvZQZRn7CrzhuExFUBE8_ZDDoTP6bLriwMzNZv7DJTHMQBwjNDai4bOzW4Vmyks9i1sbIjQNOY6fJ2GYqgygbSKzexo-Xe6UbW1kyC105HLe1JP4gBv5IxKRfmHf_JgwaWuZGwgnceKPsQWRRzQDENAXlcgcM4NFfrtxh-R1e-a15S0nkEXKunnRrFAhI-ErAfjIArkzs9wamK85VhPxdpdplynB4TBnvwvXSWs40iQ&lib=MPYdUwMfEV2sfKpM3762auD2K9JXlkecA';
+
+// ── App state ────────────────────────────────────────────────────
+let currentRack   = null;
+let scanMode      = null;
+let html5QrCode   = null;
+let isScanning    = false;
+
+// Session counters
+let statsScans = 0;
+let statsAdded = 0;
+let statsDupe  = 0;
+
+// ── DOM refs ─────────────────────────────────────────────────────
+const rackDisplay    = document.getElementById('currentRackDisplay');
+const rackStatusIcon = document.getElementById('rackStatusIcon');
+const rackLabelBar   = document.getElementById('rackLabelBar');
+const scanModal      = document.getElementById('scanModal');
+const scanModalMode  = document.getElementById('scanModalMode');
+const scanModalHint  = document.getElementById('scanModalHint');
+const toast          = document.getElementById('toast');
+const lastScanCard   = document.getElementById('lastScanCard');
+const lastScanBarcode= document.getElementById('lastScanBarcode');
+const lastScanResult = document.getElementById('lastScanResult');
+const btnScanProduct = document.getElementById('btnScanProduct');
+
+// ═══════════════════════════════════════════════════════════════
+//  SCANNER
+// ═══════════════════════════════════════════════════════════════
+
+function startScan(mode) {
+  if (mode === 'product' && !currentRack) {
+    showToast('Please scan a rack first.', 'warning');
+    playSound('warning');
+    return;
+  }
+
+  scanMode = mode;
+  isScanning = false;
+
+  scanModalMode.textContent = mode === 'rack' ? 'SCAN RACK' : 'SCAN PRODUCT';
+  scanModalHint.textContent = mode === 'rack'
+    ? 'Point at rack QR code'
+    : `Rack: ${currentRack} · Point at product barcode`;
+
+  scanModal.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+
+  setTimeout(initScanner, 100);
+}
+
+function initScanner() {
+  const config = {
+    fps: 15,
+    qrbox: { width: 280, height: 200 },
+    aspectRatio: 1.5,
+    supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA],
+    formatsToSupport: [
+      Html5QrcodeSupportedFormats.QR_CODE,
+      Html5QrcodeSupportedFormats.CODE_128,
+      Html5QrcodeSupportedFormats.CODE_39,
+      Html5QrcodeSupportedFormats.EAN_13,
+      Html5QrcodeSupportedFormats.EAN_8,
+      Html5QrcodeSupportedFormats.UPC_A,
+      Html5QrcodeSupportedFormats.UPC_E,
+    ],
+    rememberLastUsedCamera: true,
+    showTorchButtonIfSupported: true,
+  };
+
+  html5QrCode = new Html5Qrcode('html5qr-code-full-region', { verbose: false });
+
+  html5QrCode.start(
+    { facingMode: 'environment' },
+    config,
+    onScanSuccess,
+    () => {}  // ignore per-frame failures
+  ).catch(err => {
+    console.error('Scanner start error:', err);
+    const msg = String(err);
+    if (msg.includes('ermission') || msg.includes('NotAllowed')) {
+      showToast('Camera permission denied. Allow camera access in browser settings.', 'error', 5000);
+    } else {
+      showToast('Camera error. Please try again.', 'error');
+    }
+    closeScanner();
+  });
+}
+
+function onScanSuccess(decodedText) {
+  if (isScanning) return;
+  isScanning = true;
+
+  const value = decodedText.trim();
+  if (scanMode === 'rack') {
+    handleRackScan(value);
+  } else if (scanMode === 'product') {
+    handleProductScan(value);
+  }
+}
+
+async function closeScanner() {
+  if (html5QrCode) {
+    try { await html5QrCode.stop(); html5QrCode.clear(); } catch (e) {}
+    html5QrCode = null;
+  }
+  scanModal.style.display = 'none';
+  document.body.style.overflow = '';
+  scanMode = null;
+  isScanning = false;
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  RACK HANDLER
+// ═══════════════════════════════════════════════════════════════
+
+function handleRackScan(rackCode) {
+  currentRack = rackCode;
+  rackDisplay.textContent = rackCode;
+  rackDisplay.classList.remove('no-rack');
+  rackStatusIcon.classList.add('active');
+  rackLabelBar.style.borderLeftColor = 'var(--green)';
+  btnScanProduct.disabled = false;
+
+  playSound('success');
+  showToast(`Rack set: ${rackCode}`, 'success');
+  closeScanner();
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  PRODUCT HANDLER
+// ═══════════════════════════════════════════════════════════════
+
+async function handleProductScan(barcode) {
+  await closeScanner();
+  showSavingIndicator(true);
+
+  try {
+    const result = await saveToSheet(barcode, currentRack);
+    statsScans++;
+    updateStats(result.result);
+    showLastScan(barcode, result);
+    playSound(result.result === 'Duplicate' ? 'warning' : 'success');
+    showToast(getResultMessage(result), result.result === 'Duplicate' ? 'warning' : 'success');
+  } catch (err) {
+    console.error('Save error:', err);
+    showToast('Unable to save data. Please try again.', 'error');
+    playSound('error');
+    showLastScan(barcode, { result: 'Error', message: 'Save failed' });
+  } finally {
+    showSavingIndicator(false);
+    // Auto-reopen product scanner after a short delay
+    setTimeout(() => { if (currentRack) startScan('product'); }, 1600);
+  }
+}
+
+function getResultMessage(result) {
+  switch (result.result) {
+    case 'Added':     return '✓ Product added to rack';
+    case 'Appended':  return '✓ Rack added to product';
+    case 'Duplicate': return 'Rack already assigned';
+    default:          return result.message || 'Unknown result';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  GOOGLE SHEETS API CALL
+// ═══════════════════════════════════════════════════════════════
+
+async function saveToSheet(barcode, rack) {
+  // GAS Web Apps work best with GET + URL params when using no-cors
+  const url = `${APPS_SCRIPT_URL}?action=save&barcode=${encodeURIComponent(barcode)}&rack=${encodeURIComponent(rack)}`;
+  const response = await fetch(url);
+  if (!response.ok) throw new Error('HTTP ' + response.status);
+  return await response.json();
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  UI HELPERS
+// ═══════════════════════════════════════════════════════════════
+
+let toastTimer = null;
+
+function showToast(message, type = 'info', duration = 2500) {
+  if (toastTimer) clearTimeout(toastTimer);
+  toast.textContent = message;
+  toast.className = `toast ${type} show`;
+  toastTimer = setTimeout(() => toast.classList.remove('show'), duration);
+}
+
+function showLastScan(barcode, result) {
+  lastScanCard.style.display = 'block';
+  lastScanBarcode.textContent = barcode;
+  lastScanResult.textContent = getResultMessage(result);
+  lastScanResult.className = 'last-scan-result';
+  if (result.result === 'Duplicate') lastScanResult.classList.add('warning');
+  else if (result.result === 'Error') lastScanResult.classList.add('error');
+  else                                lastScanResult.classList.add('success');
+}
+
+function updateStats(resultType) {
+  document.getElementById('statScans').textContent = statsScans;
+  if (resultType === 'Added' || resultType === 'Appended') {
+    statsAdded++;
+    document.getElementById('statAdded').textContent = statsAdded;
+  } else if (resultType === 'Duplicate') {
+    statsDupe++;
+    document.getElementById('statDupe').textContent = statsDupe;
+  }
+}
+
+let savingBarEl = null;
+
+function showSavingIndicator(show) {
+  if (!savingBarEl) {
+    savingBarEl = document.createElement('div');
+    savingBarEl.className = 'saving-bar';
+    savingBarEl.innerHTML = '<div class="spinner"></div>SAVING…';
+    document.body.appendChild(savingBarEl);
+  }
+  savingBarEl.classList.toggle('show', show);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  AUDIO FEEDBACK (Web Audio API — no files needed)
+// ═══════════════════════════════════════════════════════════════
+
+function playSound(type) {
+  try {
+    const ctx  = new (window.AudioContext || window.webkitAudioContext)();
+    const osc  = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+
+    if (type === 'success') {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, ctx.currentTime);
+      osc.frequency.setValueAtTime(1100, ctx.currentTime + 0.1);
+    } else if (type === 'warning') {
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(440, ctx.currentTime);
+      osc.frequency.setValueAtTime(380, ctx.currentTime + 0.15);
+    } else {
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(220, ctx.currentTime);
+    }
+
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.35);
+  } catch (e) {}
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════════════════
+
+(function init() {
+  scanModal.addEventListener('click', e => { if (e.target === scanModal) closeScanner(); });
+
+  if (APPS_SCRIPT_URL === 'YOUR_GOOGLE_APPS_SCRIPT_URL_HERE') {
+    console.warn('⚠️  Set APPS_SCRIPT_URL in the script to your GAS Web App URL.');
+    showToast('⚠️ Backend URL not configured', 'warning', 6000);
+  }
+})();
+</script>
+</body>
+</html>
