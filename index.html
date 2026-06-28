@@ -372,6 +372,45 @@ body {
   touch-action: manipulation;
 }
 
+/* ── Flashlight button ── */
+.btn-torch {
+  background: rgba(255,255,255,0.1);
+  border: 2px solid rgba(255,255,255,0.25);
+  color: var(--text-primary);
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  touch-action: manipulation;
+  flex-shrink: 0;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.btn-torch.on {
+  background: rgba(255,165,0,0.25);
+  border-color: var(--amber);
+}
+
+/* ── Rack banner shown below label bar after rack scanned ── */
+.rack-banner {
+  background: var(--green);
+  color: #000;
+  text-align: center;
+  padding: 10px 20px;
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  display: none;
+  word-break: break-all;
+}
+
+.rack-banner.show { display: block; }
+
 /* ── Saving spinner ── */
 .fs-spinner {
   width: 72px;
@@ -407,10 +446,14 @@ body {
     <p class="btn-start-hint" id="startHint">Tap to scan a rack first</p>
   </main>
 
+  <!-- Rack banner — bold rack number shown below label bar -->
+  <div class="rack-banner" id="rackBanner"></div>
+
   <!-- Camera modal -->
   <div class="scan-modal" id="scanModal" style="display:none;">
     <div class="scan-modal-header">
       <span class="scan-modal-mode" id="scanModalMode">SCAN RACK</span>
+      <button class="btn-torch" id="btnTorch" onclick="toggleTorch()" title="Toggle flashlight">🔦</button>
       <button class="btn-close" onclick="closeScanner()">✕</button>
     </div>
     <div class="scan-modal-body">
@@ -457,6 +500,8 @@ let currentRack  = null;
 let scanMode     = null;
 let html5QrCode  = null;
 let isScanning   = false;
+let successTimer = null;   // tracks auto-dismiss timer on product success
+let torchOn      = false;  // flashlight state
 
 // ── DOM ──
 const rackDisplay    = document.getElementById('currentRackDisplay');
@@ -639,6 +684,10 @@ async function closeScanner() {
   document.body.style.overflow = '';
   scanMode = null;
   isScanning = false;
+  // Reset torch state
+  torchOn = false;
+  const btn = document.getElementById('btnTorch');
+  if (btn) { btn.classList.remove('on'); btn.textContent = '🔦'; }
 }
 
 // ═══════════════════════════════════════════
@@ -648,12 +697,17 @@ async function closeScanner() {
 function handleRackScan(rackCode) {
   currentRack = rackCode;
 
-  // Update rack bar
+  // Update rack label bar
   rackDisplay.textContent = rackCode;
   rackDisplay.classList.remove('no-rack');
   rackStatusIcon.classList.add('active');
   rackLabelBar.style.borderLeftColor = 'var(--green)';
   startHint.textContent = `Scanning products for ${rackCode}`;
+
+  // Show bold rack banner below label bar
+  const banner = document.getElementById('rackBanner');
+  banner.textContent = rackCode;
+  banner.classList.add('show');
 
   closeScanner();
   playSound('success');
@@ -697,11 +751,12 @@ async function handleProductScan(barcode) {
       showFinishButton: true,
     });
 
-    // Auto-dismiss after 2s and open scanner for next product
-    setTimeout(() => {
+    // Auto-dismiss after 5s and open scanner for next product
+    // Timer is cancelled if user taps FINISH THIS RACK
+    successTimer = setTimeout(() => {
       hideSuccess();
       startScan('product');
-    }, 2000);
+    }, 5000);
 
   } catch (err) {
     showSaving(false);
@@ -717,6 +772,8 @@ async function handleProductScan(barcode) {
 // ═══════════════════════════════════════════
 
 function finishRack() {
+  // Cancel auto-dismiss timer so we dont re-open product scanner
+  if (successTimer) { clearTimeout(successTimer); successTimer = null; }
   hideSuccess();
   currentRack = null;
   rackDisplay.textContent = 'NONE';
@@ -724,6 +781,10 @@ function finishRack() {
   rackStatusIcon.classList.remove('active');
   rackLabelBar.style.borderLeftColor = 'var(--amber)';
   startHint.textContent = 'Tap to scan a rack first';
+  // Hide rack banner
+  document.getElementById('rackBanner').classList.remove('show');
+  // Go to rack scan — NOT product scan
+  startScan('rack');
 }
 
 // ═══════════════════════════════════════════
@@ -781,6 +842,34 @@ function saveToSheet(barcode, rack) {
     document.body.appendChild(script);
   });
 }
+
+// ═══════════════════════════════════════════
+//  FLASHLIGHT / TORCH
+// ═══════════════════════════════════════════
+
+async function toggleTorch() {
+  if (!html5QrCode) return;
+  try {
+    torchOn = !torchOn;
+    await html5QrCode.applyVideoConstraints({
+      advanced: [{ torch: torchOn }]
+    });
+    const btn = document.getElementById('btnTorch');
+    if (torchOn) {
+      btn.classList.add('on');
+      btn.textContent = '💡';
+    } else {
+      btn.classList.remove('on');
+      btn.textContent = '🔦';
+    }
+  } catch (e) {
+    // Torch not supported on this device — silently ignore
+    console.log('Torch not supported:', e);
+  }
+}
+
+// Reset torch state when scanner closes
+const _origCloseScanner = closeScanner;
 
 // ═══════════════════════════════════════════
 //  AUDIO FEEDBACK
