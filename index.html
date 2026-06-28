@@ -14,7 +14,6 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&family=Roboto+Mono:wght@500;700&display=swap" rel="stylesheet" />
 
 <style>
-/* ── Tokens ─────────────────────────────── */
 :root {
   --bg:           #1A1F2E;
   --bg-card:      #242A3A;
@@ -24,13 +23,10 @@
   --amber-dim:    #CC8400;
   --green:        #00C851;
   --red:          #FF4444;
-  --blue:         #4A9EFF;
   --text-primary: #F0F2F8;
   --text-muted:   #7A84A0;
-  --text-scan:    #E8ECF8;
   --font-ui:      'Inter', system-ui, sans-serif;
   --font-mono:    'Roboto Mono', 'Courier New', monospace;
-  --radius:       10px;
   --radius-lg:    16px;
 }
 
@@ -52,7 +48,7 @@ body {
   padding-bottom: env(safe-area-inset-bottom);
 }
 
-/* ── Rack Label Bar (signature element) ── */
+/* ── Rack Label Bar ── */
 .rack-label-bar {
   position: sticky;
   top: 0;
@@ -65,6 +61,7 @@ body {
   border-bottom: 2px solid var(--border);
   box-shadow: 0 2px 12px rgba(0,0,0,0.4);
   border-left: 5px solid var(--amber);
+  transition: border-left-color 0.4s;
 }
 
 .rack-label-eyebrow {
@@ -111,177 +108,49 @@ body {
   50%       { opacity: 0.3; }
 }
 
-/* ── Toast ───────────────────────────────── */
-.toast {
-  position: fixed;
-  top: 80px;
-  left: 50%;
-  transform: translateX(-50%) translateY(-20px);
-  z-index: 200;
-  min-width: 280px;
-  max-width: 90vw;
-  padding: 14px 22px;
-  border-radius: var(--radius-lg);
-  font-size: 15px;
-  font-weight: 700;
-  text-align: center;
-  letter-spacing: 0.02em;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.2s ease, transform 0.2s ease;
-  box-shadow: 0 6px 32px rgba(0,0,0,0.5);
-}
-
-.toast.show {
-  opacity: 1;
-  transform: translateX(-50%) translateY(0);
-}
-
-.toast.success { background: var(--green);  color: #000; }
-.toast.warning { background: var(--amber);  color: #000; }
-.toast.error   { background: var(--red);    color: #fff; }
-.toast.info    { background: var(--blue);   color: #fff; }
-
-/* ── Main Content ────────────────────────── */
+/* ── Main Content ── */
 .main-content {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 20px 16px;
-  max-width: 500px;
-  width: 100%;
-  margin: 0 auto;
-}
-
-/* ── Buttons ─────────────────────────────── */
-.button-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 12px;
-  margin-top: 8px;
-}
-
-.btn {
-  display: flex;
   align-items: center;
   justify-content: center;
-  gap: 14px;
+  gap: 24px;
+  padding: 32px 24px;
+}
+
+/* ── Start Button ── */
+.btn-start {
+  width: 100%;
+  max-width: 360px;
+  padding: 28px 20px;
+  background: var(--amber);
+  color: #000;
   border: none;
   border-radius: var(--radius-lg);
   font-family: var(--font-ui);
   font-weight: 900;
-  font-size: 20px;
-  letter-spacing: 0.06em;
+  font-size: 24px;
+  letter-spacing: 0.08em;
   cursor: pointer;
-  padding: 22px 20px;
-  transition: transform 0.1s, opacity 0.2s;
+  box-shadow: 0 4px 24px rgba(255,165,0,0.35);
+  border-left: 5px solid var(--amber-dim);
+  touch-action: manipulation;
+  transition: transform 0.1s;
   -webkit-user-select: none;
   user-select: none;
-  touch-action: manipulation;
-  width: 100%;
 }
 
-.btn:active { transform: scale(0.97); }
-.btn-icon { font-size: 22px; flex-shrink: 0; }
-.btn-label { letter-spacing: 0.08em; }
+.btn-start:active { transform: scale(0.97); }
 
-.btn-rack {
-  background: var(--amber);
-  color: #000;
-  box-shadow: 0 4px 24px rgba(255,165,0,0.3);
-  border-left: 5px solid var(--amber-dim);
-}
-
-.btn-product {
-  background: var(--bg-card);
-  color: var(--green);
-  border: 2px solid var(--green);
-  box-shadow: 0 4px 24px rgba(0,200,81,0.15);
-}
-
-.btn-product:disabled {
-  color: var(--text-muted);
-  border-color: var(--border);
-  box-shadow: none;
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-/* ── Last Scan Card ─────────────────────── */
-.last-scan-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 16px 18px;
-}
-
-.last-scan-label {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.15em;
-  color: var(--text-muted);
-  margin-bottom: 6px;
-}
-
-.last-scan-barcode {
-  font-family: var(--font-mono);
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--text-scan);
-  margin-bottom: 4px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.last-scan-result {
+.btn-start-hint {
   font-size: 14px;
-  font-weight: 600;
   color: var(--text-muted);
+  text-align: center;
+  letter-spacing: 0.03em;
 }
 
-.last-scan-result.success  { color: var(--green); }
-.last-scan-result.warning  { color: var(--amber); }
-.last-scan-result.error    { color: var(--red); }
-
-/* ── Stats ───────────────────────────────── */
-.stats-row {
-  display: flex;
-  gap: 8px;
-  justify-content: center;
-  margin-top: 4px;
-}
-
-.stat-pill {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 12px 8px;
-}
-
-.stat-num {
-  font-family: var(--font-mono);
-  font-size: 28px;
-  font-weight: 700;
-  color: var(--text-primary);
-  line-height: 1;
-}
-
-.stat-lbl {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  color: var(--text-muted);
-  text-transform: uppercase;
-}
-
-/* ── Scan Modal ──────────────────────────── */
+/* ── Scan Modal (camera) ── */
 .scan-modal {
   position: fixed;
   inset: 0;
@@ -313,15 +182,13 @@ body {
   border: none;
   color: var(--text-primary);
   font-size: 18px;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  line-height: 1;
-  flex-shrink: 0;
   touch-action: manipulation;
 }
 
@@ -347,9 +214,9 @@ body {
 #html5qr-code-full-region__dashboard { display: none !important; }
 
 .scan-modal-hint {
-  padding: 14px 20px;
+  padding: 16px 20px;
   text-align: center;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   letter-spacing: 0.05em;
   color: var(--text-muted);
@@ -358,34 +225,105 @@ body {
   flex-shrink: 0;
 }
 
-/* ── Saving indicator ───────────────────── */
-.saving-bar {
+/* ── Fullscreen Overlay (success / saving) ── */
+.fs-overlay {
   position: fixed;
-  bottom: calc(env(safe-area-inset-bottom) + 16px);
-  right: 16px;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 20px;
-  padding: 8px 16px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-muted);
-  letter-spacing: 0.06em;
+  inset: 0;
+  z-index: 400;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  gap: 28px;
+  padding: 40px 32px;
+  text-align: center;
   opacity: 0;
-  transition: opacity 0.2s;
+  transition: opacity 0.25s ease;
   pointer-events: none;
-  z-index: 50;
 }
 
-.saving-bar.show { opacity: 1; }
+.fs-overlay.show {
+  opacity: 1;
+  pointer-events: all;
+}
 
-.spinner {
-  width: 14px;
-  height: 14px;
-  border: 2px solid var(--border);
+/* Green success overlay */
+.fs-overlay.success {
+  background: #00A843;
+}
+
+/* Dark saving overlay */
+.fs-overlay.saving {
+  background: rgba(13, 16, 23, 0.96);
+}
+
+/* ── Success tick ── */
+.fs-tick {
+  width: 110px;
+  height: 110px;
+  background: rgba(255,255,255,0.2);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 60px;
+  line-height: 1;
+  animation: pop-in 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes pop-in {
+  0%   { transform: scale(0.4); opacity: 0; }
+  100% { transform: scale(1);   opacity: 1; }
+}
+
+.fs-title {
+  font-size: 28px;
+  font-weight: 900;
+  color: #fff;
+  letter-spacing: 0.02em;
+}
+
+.fs-subtitle {
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.85);
+  letter-spacing: 0.04em;
+  word-break: break-all;
+}
+
+.fs-meta {
+  font-size: 14px;
+  color: rgba(255,255,255,0.65);
+  letter-spacing: 0.03em;
+}
+
+/* ── Finish Scan Button (on success overlay) ── */
+.btn-finish {
+  margin-top: 12px;
+  padding: 18px 40px;
+  background: rgba(255,255,255,0.2);
+  color: #fff;
+  border: 2px solid rgba(255,255,255,0.5);
+  border-radius: var(--radius-lg);
+  font-family: var(--font-ui);
+  font-weight: 800;
+  font-size: 17px;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+  transition: background 0.15s;
+}
+
+.btn-finish:active { background: rgba(255,255,255,0.35); }
+
+/* ── Saving spinner ── */
+.fs-spinner {
+  width: 72px;
+  height: 72px;
+  border: 5px solid rgba(255,255,255,0.15);
   border-top-color: var(--amber);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
@@ -393,60 +331,30 @@ body {
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
-@media (min-height: 700px) {
-  .btn { padding: 26px 20px; font-size: 22px; }
-  .stat-num { font-size: 32px; }
+.fs-saving-text {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.1em;
 }
 </style>
 </head>
 <body>
 
-  <!-- Rack Label Bar — always visible -->
+  <!-- Always-visible rack bar -->
   <div class="rack-label-bar" id="rackLabelBar">
     <span class="rack-label-eyebrow">CURRENT RACK</span>
     <span class="rack-label-value no-rack" id="currentRackDisplay">NONE</span>
     <span class="rack-label-icon" id="rackStatusIcon">⬤</span>
   </div>
 
-  <!-- Toast notification -->
-  <div class="toast" id="toast" role="alert" aria-live="polite"></div>
-
-  <!-- Main content -->
+  <!-- Main screen — single button -->
   <main class="main-content">
-    <div class="button-grid">
-      <button class="btn btn-rack" id="btnScanRack" onclick="startScan('rack')">
-        <span class="btn-icon">⬛</span>
-        <span class="btn-label">SCAN RACK</span>
-      </button>
-      <button class="btn btn-product" id="btnScanProduct" onclick="startScan('product')" disabled>
-        <span class="btn-icon">▦</span>
-        <span class="btn-label">SCAN PRODUCT</span>
-      </button>
-    </div>
-
-    <div class="last-scan-card" id="lastScanCard" style="display:none;">
-      <div class="last-scan-label">LAST SCAN</div>
-      <div class="last-scan-barcode" id="lastScanBarcode">—</div>
-      <div class="last-scan-result" id="lastScanResult">—</div>
-    </div>
-
-    <div class="stats-row">
-      <div class="stat-pill">
-        <span class="stat-num" id="statScans">0</span>
-        <span class="stat-lbl">scanned</span>
-      </div>
-      <div class="stat-pill">
-        <span class="stat-num" id="statAdded">0</span>
-        <span class="stat-lbl">added</span>
-      </div>
-      <div class="stat-pill">
-        <span class="stat-num" id="statDupe">0</span>
-        <span class="stat-lbl">duplicate</span>
-      </div>
-    </div>
+    <button class="btn-start" onclick="startScan('rack')">START SCANNING</button>
+    <p class="btn-start-hint" id="startHint">Tap to scan a rack first</p>
   </main>
 
-  <!-- Full-screen scan modal -->
+  <!-- Camera modal -->
   <div class="scan-modal" id="scanModal" style="display:none;">
     <div class="scan-modal-header">
       <span class="scan-modal-mode" id="scanModalMode">SCAN RACK</span>
@@ -455,67 +363,69 @@ body {
     <div class="scan-modal-body">
       <div id="html5qr-code-full-region"></div>
     </div>
-    <div class="scan-modal-hint" id="scanModalHint">Align QR code or barcode in the frame</div>
+    <div class="scan-modal-hint" id="scanModalHint">Point camera at rack QR code</div>
+  </div>
+
+  <!-- Fullscreen saving overlay -->
+  <div class="fs-overlay saving" id="fsSaving">
+    <div class="fs-spinner"></div>
+    <div class="fs-saving-text">SAVING…</div>
+  </div>
+
+  <!-- Fullscreen success overlay -->
+  <div class="fs-overlay success" id="fsSuccess">
+    <div class="fs-tick">✓</div>
+    <div class="fs-title" id="fsTitle">RACK SCANNED</div>
+    <div class="fs-subtitle" id="fsSubtitle"></div>
+    <div class="fs-meta" id="fsMeta"></div>
+    <button class="btn-finish" id="btnFinish" onclick="finishRack()" style="display:none;">
+      FINISH THIS RACK
+    </button>
   </div>
 
 <script>
-/**
- * ═══════════════════════════════════════════════════════════════
- * WAREHOUSE RACK SCANNER — app.js (inlined)
- *
- * IMPORTANT: Replace the URL below with your deployed
- * Google Apps Script Web App URL.
- * ═══════════════════════════════════════════════════════════════
- */
-
-// ▶ REPLACE THIS with your deployed Apps Script URL
+// ▶ YOUR APPS SCRIPT URL
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwaoyBOBULcQ61MhcGpkyWcALuAD3bXLoK-rHOK0zcNWy-pgMlnEqgk_PMbxMpl2H-0RQ/exec';
-// ── App state ────────────────────────────────────────────────────
-let currentRack   = null;
-let scanMode      = null;
-let html5QrCode   = null;
-let isScanning    = false;
 
-// Session counters
-let statsScans = 0;
-let statsAdded = 0;
-let statsDupe  = 0;
+// ── State ──
+let currentRack  = null;
+let scanMode     = null;
+let html5QrCode  = null;
+let isScanning   = false;
 
-// ── DOM refs ─────────────────────────────────────────────────────
+// ── DOM ──
 const rackDisplay    = document.getElementById('currentRackDisplay');
 const rackStatusIcon = document.getElementById('rackStatusIcon');
 const rackLabelBar   = document.getElementById('rackLabelBar');
 const scanModal      = document.getElementById('scanModal');
 const scanModalMode  = document.getElementById('scanModalMode');
 const scanModalHint  = document.getElementById('scanModalHint');
-const toast          = document.getElementById('toast');
-const lastScanCard   = document.getElementById('lastScanCard');
-const lastScanBarcode= document.getElementById('lastScanBarcode');
-const lastScanResult = document.getElementById('lastScanResult');
-const btnScanProduct = document.getElementById('btnScanProduct');
+const startHint      = document.getElementById('startHint');
+const fsSaving       = document.getElementById('fsSaving');
+const fsSuccess      = document.getElementById('fsSuccess');
+const fsTitle        = document.getElementById('fsTitle');
+const fsSubtitle     = document.getElementById('fsSubtitle');
+const fsMeta         = document.getElementById('fsMeta');
+const btnFinish      = document.getElementById('btnFinish');
 
-// ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════
 //  SCANNER
-// ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════
 
 function startScan(mode) {
-  if (mode === 'product' && !currentRack) {
-    showToast('Please scan a rack first.', 'warning');
-    playSound('warning');
-    return;
-  }
-
   scanMode = mode;
   isScanning = false;
 
-  scanModalMode.textContent = mode === 'rack' ? 'SCAN RACK' : 'SCAN PRODUCT';
-  scanModalHint.textContent = mode === 'rack'
-    ? 'Point at rack QR code'
-    : `Rack: ${currentRack} · Point at product barcode`;
+  if (mode === 'rack') {
+    scanModalMode.textContent = 'SCAN RACK';
+    scanModalHint.textContent = 'Point camera at rack QR code';
+  } else {
+    scanModalMode.textContent = 'SCAN PRODUCT';
+    scanModalHint.textContent = `Rack: ${currentRack} · Point at product barcode`;
+  }
 
   scanModal.style.display = 'flex';
   document.body.style.overflow = 'hidden';
-
   setTimeout(initScanner, 100);
 }
 
@@ -544,14 +454,13 @@ function initScanner() {
     { facingMode: 'environment' },
     config,
     onScanSuccess,
-    () => {}  // ignore per-frame failures
+    () => {}
   ).catch(err => {
-    console.error('Scanner start error:', err);
     const msg = String(err);
     if (msg.includes('ermission') || msg.includes('NotAllowed')) {
-      showToast('Camera permission denied. Allow camera access in browser settings.', 'error', 5000);
+      alert('Camera permission denied. Please allow camera access in your browser settings.');
     } else {
-      showToast('Camera error. Please try again.', 'error');
+      alert('Camera error. Please try again.');
     }
     closeScanner();
   });
@@ -560,13 +469,9 @@ function initScanner() {
 function onScanSuccess(decodedText) {
   if (isScanning) return;
   isScanning = true;
-
   const value = decodedText.trim();
-  if (scanMode === 'rack') {
-    handleRackScan(value);
-  } else if (scanMode === 'product') {
-    handleProductScan(value);
-  }
+  if (scanMode === 'rack')    handleRackScan(value);
+  else if (scanMode === 'product') handleProductScan(value);
 }
 
 async function closeScanner() {
@@ -580,70 +485,121 @@ async function closeScanner() {
   isScanning = false;
 }
 
-// ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════
 //  RACK HANDLER
-// ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════
 
 function handleRackScan(rackCode) {
   currentRack = rackCode;
+
+  // Update rack bar
   rackDisplay.textContent = rackCode;
   rackDisplay.classList.remove('no-rack');
   rackStatusIcon.classList.add('active');
   rackLabelBar.style.borderLeftColor = 'var(--green)';
-  btnScanProduct.disabled = false;
+  startHint.textContent = `Scanning products for ${rackCode}`;
 
-  playSound('success');
-  showToast(`Rack set: ${rackCode}`, 'success');
   closeScanner();
+  playSound('success');
+
+  // Show fullscreen rack success
+  showSuccess({
+    title:    'RACK SCANNED',
+    subtitle: rackCode,
+    meta:     'Opening product scanner…',
+    showFinishButton: false,
+  });
+
+  // Auto-open product scanner after 1.8s
+  setTimeout(() => {
+    hideSuccess();
+    startScan('product');
+  }, 1800);
 }
 
-// ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════
 //  PRODUCT HANDLER
-// ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════
 
 async function handleProductScan(barcode) {
   await closeScanner();
-  showSavingIndicator(true);
+  showSaving(true);
 
   try {
     const result = await saveToSheet(barcode, currentRack);
-    statsScans++;
-    updateStats(result.result);
-    showLastScan(barcode, result);
+    showSaving(false);
     playSound(result.result === 'Duplicate' ? 'warning' : 'success');
-    showToast(getResultMessage(result), result.result === 'Duplicate' ? 'warning' : 'success');
+
+    const isDupe = result.result === 'Duplicate';
+
+    showSuccess({
+      title:    isDupe ? 'ALREADY ASSIGNED' : 'PRODUCT SAVED',
+      subtitle: barcode,
+      meta:     isDupe
+                  ? `Already linked to ${currentRack}`
+                  : `Saved to ${currentRack}`,
+      showFinishButton: true,
+    });
+
+    // Auto-dismiss after 2s and open scanner for next product
+    setTimeout(() => {
+      hideSuccess();
+      startScan('product');
+    }, 2000);
+
   } catch (err) {
-    console.error('Save error:', err);
-    showToast('Unable to save data. Please try again.', 'error');
+    showSaving(false);
     playSound('error');
-    showLastScan(barcode, { result: 'Error', message: 'Save failed' });
-  } finally {
-    showSavingIndicator(false);
-    // Auto-reopen product scanner after a short delay
-    setTimeout(() => { if (currentRack) startScan('product'); }, 1600);
+    alert('Unable to save data. Please try again.');
+    // Reopen scanner so worker can retry
+    setTimeout(() => startScan('product'), 800);
   }
 }
 
-function getResultMessage(result) {
-  switch (result.result) {
-    case 'Added':     return '✓ Product added to rack';
-    case 'Appended':  return '✓ Rack added to product';
-    case 'Duplicate': return 'Rack already assigned';
-    default:          return result.message || 'Unknown result';
-  }
+// ═══════════════════════════════════════════
+//  FINISH RACK — go back to start
+// ═══════════════════════════════════════════
+
+function finishRack() {
+  hideSuccess();
+  currentRack = null;
+  rackDisplay.textContent = 'NONE';
+  rackDisplay.classList.add('no-rack');
+  rackStatusIcon.classList.remove('active');
+  rackLabelBar.style.borderLeftColor = 'var(--amber)';
+  startHint.textContent = 'Tap to scan a rack first';
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  GOOGLE SHEETS API CALL
-// ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════
+//  FULLSCREEN OVERLAYS
+// ═══════════════════════════════════════════
+
+function showSuccess({ title, subtitle, meta, showFinishButton }) {
+  fsTitle.textContent    = title;
+  fsSubtitle.textContent = subtitle;
+  fsMeta.textContent     = meta;
+  btnFinish.style.display = showFinishButton ? 'block' : 'none';
+  fsSuccess.classList.add('show');
+}
+
+function hideSuccess() {
+  fsSuccess.classList.remove('show');
+}
+
+function showSaving(show) {
+  if (show) fsSaving.classList.add('show');
+  else      fsSaving.classList.remove('show');
+}
+
+// ═══════════════════════════════════════════
+//  SAVE TO GOOGLE SHEETS (JSONP)
+// ═══════════════════════════════════════════
 
 function saveToSheet(barcode, rack) {
-  // JSONP approach — bypasses CORS when hosted on GitHub Pages
   return new Promise((resolve, reject) => {
     const callbackName = 'cb_' + Date.now();
     const script = document.createElement('script');
 
-    // Timeout after 10 seconds
     const timer = setTimeout(() => {
       cleanup();
       reject(new Error('Request timed out'));
@@ -655,7 +611,6 @@ function saveToSheet(barcode, rack) {
       if (script.parentNode) document.body.removeChild(script);
     }
 
-    // GAS will call this function with the result
     window[callbackName] = function(data) {
       cleanup();
       resolve(data);
@@ -671,55 +626,9 @@ function saveToSheet(barcode, rack) {
   });
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  UI HELPERS
-// ═══════════════════════════════════════════════════════════════
-
-let toastTimer = null;
-
-function showToast(message, type = 'info', duration = 2500) {
-  if (toastTimer) clearTimeout(toastTimer);
-  toast.textContent = message;
-  toast.className = `toast ${type} show`;
-  toastTimer = setTimeout(() => toast.classList.remove('show'), duration);
-}
-
-function showLastScan(barcode, result) {
-  lastScanCard.style.display = 'block';
-  lastScanBarcode.textContent = barcode;
-  lastScanResult.textContent = getResultMessage(result);
-  lastScanResult.className = 'last-scan-result';
-  if (result.result === 'Duplicate') lastScanResult.classList.add('warning');
-  else if (result.result === 'Error') lastScanResult.classList.add('error');
-  else                                lastScanResult.classList.add('success');
-}
-
-function updateStats(resultType) {
-  document.getElementById('statScans').textContent = statsScans;
-  if (resultType === 'Added' || resultType === 'Appended') {
-    statsAdded++;
-    document.getElementById('statAdded').textContent = statsAdded;
-  } else if (resultType === 'Duplicate') {
-    statsDupe++;
-    document.getElementById('statDupe').textContent = statsDupe;
-  }
-}
-
-let savingBarEl = null;
-
-function showSavingIndicator(show) {
-  if (!savingBarEl) {
-    savingBarEl = document.createElement('div');
-    savingBarEl.className = 'saving-bar';
-    savingBarEl.innerHTML = '<div class="spinner"></div>SAVING…';
-    document.body.appendChild(savingBarEl);
-  }
-  savingBarEl.classList.toggle('show', show);
-}
-
-// ═══════════════════════════════════════════════════════════════
-//  AUDIO FEEDBACK (Web Audio API — no files needed)
-// ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════
+//  AUDIO FEEDBACK
+// ═══════════════════════════════════════════
 
 function playSound(type) {
   try {
@@ -730,7 +639,6 @@ function playSound(type) {
     gain.connect(ctx.destination);
     gain.gain.setValueAtTime(0.3, ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
-
     if (type === 'success') {
       osc.type = 'sine';
       osc.frequency.setValueAtTime(880, ctx.currentTime);
@@ -743,24 +651,10 @@ function playSound(type) {
       osc.type = 'sawtooth';
       osc.frequency.setValueAtTime(220, ctx.currentTime);
     }
-
     osc.start(ctx.currentTime);
     osc.stop(ctx.currentTime + 0.35);
   } catch (e) {}
 }
-
-// ═══════════════════════════════════════════════════════════════
-//  INIT
-// ═══════════════════════════════════════════════════════════════
-
-(function init() {
-  scanModal.addEventListener('click', e => { if (e.target === scanModal) closeScanner(); });
-
-  if (APPS_SCRIPT_URL === 'YOUR_GOOGLE_APPS_SCRIPT_URL_HERE') {
-    console.warn('⚠️  Set APPS_SCRIPT_URL in the script to your GAS Web App URL.');
-    showToast('⚠️ Backend URL not configured', 'warning', 6000);
-  }
-})();
 </script>
 </body>
 </html>
