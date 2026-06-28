@@ -537,7 +537,7 @@ function initScanner() {
 
 // Rack: starts with S + digit(s) + hyphen  e.g. S4-C97-6430-A
 function isRackCode(code) {
-  return /^S\d+-/i.test(code);
+  return /^S[0-9]+-/.test(code);
 }
 
 // Known product: starts with B  e.g. B15652X0XOCK or B15652
