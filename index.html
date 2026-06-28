@@ -319,6 +319,59 @@ body {
 
 .btn-finish:active { background: rgba(255,255,255,0.35); }
 
+/* ── Confirmation overlay ── */
+.fs-overlay.confirm {
+  background: #1A1F2E;
+}
+
+.fs-confirm-code {
+  font-family: var(--font-mono);
+  font-size: 26px;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(255,255,255,0.08);
+  border-radius: 12px;
+  padding: 16px 28px;
+  word-break: break-all;
+  letter-spacing: 0.04em;
+}
+
+.fs-confirm-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  max-width: 320px;
+}
+
+.btn-confirm-yes {
+  padding: 20px;
+  background: var(--green);
+  color: #000;
+  border: none;
+  border-radius: var(--radius-lg);
+  font-family: var(--font-ui);
+  font-weight: 900;
+  font-size: 18px;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.btn-confirm-no {
+  padding: 20px;
+  background: transparent;
+  color: var(--red);
+  border: 2px solid var(--red);
+  border-radius: var(--radius-lg);
+  font-family: var(--font-ui);
+  font-weight: 900;
+  font-size: 18px;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
 /* ── Saving spinner ── */
 .fs-spinner {
   width: 72px;
@@ -381,6 +434,18 @@ body {
     <button class="btn-finish" id="btnFinish" onclick="finishRack()" style="display:none;">
       FINISH THIS RACK
     </button>
+  </div>
+
+<!-- Fullscreen confirmation overlay for unknown barcodes -->
+  <div class="fs-overlay confirm" id="fsConfirm" style="">
+    <div class="fs-tick" style="background:rgba(255,165,0,0.2); font-size:52px;">?</div>
+    <div class="fs-title" style="color:var(--amber);">IS THIS A PRODUCT?</div>
+    <div class="fs-confirm-code" id="confirmCode"></div>
+    <div class="fs-meta" style="color:var(--text-muted);">Unknown barcode format detected.<br>Is this a product you want to save?</div>
+    <div class="fs-confirm-buttons">
+      <button class="btn-confirm-yes" onclick="confirmProduct()">✓ YES, SAVE IT</button>
+      <button class="btn-confirm-no" onclick="rejectProduct()">✕ NO, SCAN AGAIN</button>
+    </div>
   </div>
 
 <script>
@@ -466,12 +531,103 @@ function initScanner() {
   });
 }
 
+// ═══════════════════════════════════════════
+//  VALIDATION & CODE PARSING
+// ═══════════════════════════════════════════
+
+// Rack: starts with S + digit(s) + hyphen  e.g. S4-C97-6430-A
+function isRackCode(code) {
+  return /^S\d+-/i.test(code);
+}
+
+// Known product: starts with B  e.g. B15652X0XOCK or B15652
+function isKnownProduct(code) {
+  return /^B/i.test(code);
+}
+
+// Extract stable product ID — everything before first X
+// If no X present, return full code
+function extractProductId(code) {
+  const xIndex = code.indexOf('X');
+  return xIndex !== -1 ? code.substring(0, xIndex) : code;
+}
+
+// Pending confirmation state
+let pendingCode = null;
+
 function onScanSuccess(decodedText) {
   if (isScanning) return;
-  isScanning = true;
   const value = decodedText.trim();
-  if (scanMode === 'rack')    handleRackScan(value);
-  else if (scanMode === 'product') handleProductScan(value);
+
+  if (scanMode === 'rack') {
+    // In rack mode — only accept rack format
+    if (!isRackCode(value)) {
+      showScanWarning('Not a valid rack code. Scan the rack QR.');
+      return;
+    }
+    isScanning = true;
+    handleRackScan(value);
+
+  } else if (scanMode === 'product') {
+    if (isRackCode(value)) {
+      // Rack QR scanned in product mode — warn and stay open
+      showScanWarning('That is a rack code. Scan a product barcode.');
+      return;
+    }
+
+    if (isKnownProduct(value)) {
+      // Starts with B — accept automatically
+      isScanning = true;
+      handleProductScan(extractProductId(value));
+
+    } else {
+      // Unknown format — pause scanner and ask worker to confirm
+      isScanning = true;
+      pendingCode = value;
+      closeScanner();
+      showConfirmation(extractProductId(value));
+    }
+  }
+}
+
+// Show warning in scanner hint bar — scanner stays open
+let warnTimer = null;
+function showScanWarning(msg) {
+  const hint = document.getElementById('scanModalHint');
+  const prev = hint.textContent;
+  hint.style.color = 'var(--red)';
+  hint.textContent = '⚠ ' + msg;
+  if (warnTimer) clearTimeout(warnTimer);
+  warnTimer = setTimeout(() => {
+    hint.style.color = '';
+    hint.textContent = prev;
+  }, 2000);
+}
+
+// Worker confirmed the unknown code is a product
+function confirmProduct() {
+  hideConfirmation();
+  if (pendingCode) {
+    handleProductScan(extractProductId(pendingCode));
+    pendingCode = null;
+  }
+}
+
+// Worker rejected — reopen scanner
+function rejectProduct() {
+  hideConfirmation();
+  pendingCode = null;
+  isScanning = false;
+  startScan('product');
+}
+
+function showConfirmation(productId) {
+  document.getElementById('confirmCode').textContent = productId;
+  document.getElementById('fsConfirm').classList.add('show');
+}
+
+function hideConfirmation() {
+  document.getElementById('fsConfirm').classList.remove('show');
 }
 
 async function closeScanner() {
