@@ -411,6 +411,104 @@ body {
 
 .rack-banner.show { display: block; }
 
+/* ── Manual entry link ── */
+.manual-link {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: underline;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  touch-action: manipulation;
+  padding: 8px;
+}
+
+.manual-link:active { color: var(--amber); }
+
+/* ── Manual entry overlay ── */
+.fs-overlay.manual {
+  background: var(--bg);
+}
+
+.manual-input-wrap {
+  width: 100%;
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.manual-input {
+  width: 100%;
+  padding: 18px 16px;
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  background: var(--bg-card);
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  color: var(--text-primary);
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.manual-input:focus {
+  outline: none;
+  border-color: var(--amber);
+}
+
+.manual-input.error {
+  border-color: var(--red);
+}
+
+.manual-error-msg {
+  font-size: 13px;
+  color: var(--red);
+  font-weight: 600;
+  min-height: 18px;
+  text-align: center;
+}
+
+.manual-buttons {
+  display: flex;
+  gap: 12px;
+  width: 100%;
+  max-width: 360px;
+}
+
+.btn-manual-submit {
+  flex: 1;
+  padding: 18px;
+  background: var(--green);
+  color: #000;
+  border: none;
+  border-radius: var(--radius-lg);
+  font-family: var(--font-ui);
+  font-weight: 900;
+  font-size: 16px;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.btn-manual-cancel {
+  flex: 1;
+  padding: 18px;
+  background: transparent;
+  color: var(--text-muted);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-lg);
+  font-family: var(--font-ui);
+  font-weight: 800;
+  font-size: 16px;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
 /* ── Saving spinner ── */
 .fs-spinner {
   width: 72px;
@@ -460,6 +558,7 @@ body {
       <div id="html5qr-code-full-region"></div>
     </div>
     <div class="scan-modal-hint" id="scanModalHint">Point camera at rack QR code</div>
+    <button class="manual-link" onclick="openManualEntry(scanMode)" style="background:var(--bg-card);">⌨ Barcode damaged? Enter manually</button>
   </div>
 
   <!-- Fullscreen saving overlay -->
@@ -488,6 +587,19 @@ body {
     <div class="fs-confirm-buttons">
       <button class="btn-confirm-yes" onclick="confirmProduct()">✓ YES, SAVE IT</button>
       <button class="btn-confirm-no" onclick="rejectProduct()">✕ NO, SCAN AGAIN</button>
+    </div>
+  </div>
+
+<!-- Fullscreen manual entry overlay -->
+  <div class="fs-overlay manual" id="fsManual">
+    <div class="fs-title" id="manualTitle" style="color:var(--amber);">ENTER RACK NUMBER</div>
+    <div class="manual-input-wrap">
+      <input type="text" class="manual-input" id="manualInput" placeholder="e.g. S4-C97-6430-A" autocomplete="off" autocapitalize="characters" />
+      <div class="manual-error-msg" id="manualError"></div>
+    </div>
+    <div class="manual-buttons">
+      <button class="btn-manual-cancel" onclick="closeManualEntry()">CANCEL</button>
+      <button class="btn-manual-submit" onclick="submitManualEntry()">SUBMIT</button>
     </div>
   </div>
 
@@ -842,6 +954,101 @@ function saveToSheet(barcode, rack) {
     document.body.appendChild(script);
   });
 }
+
+// ═══════════════════════════════════════════
+//  MANUAL ENTRY (same validation rules as scanning)
+// ═══════════════════════════════════════════
+
+let manualMode = null; // 'rack' or 'product'
+
+function openManualEntry(mode) {
+  // Block manual product entry if no rack is set yet
+  if (mode === 'product' && !currentRack) {
+    alert('Please scan or enter a rack first.');
+    return;
+  }
+
+  manualMode = mode || 'rack';
+
+  // Close camera scanner if open
+  if (scanModal.style.display === 'flex') {
+    closeScanner();
+  }
+
+  const title = document.getElementById('manualTitle');
+  const input = document.getElementById('manualInput');
+  const error = document.getElementById('manualError');
+
+  title.textContent = manualMode === 'rack' ? 'ENTER RACK NUMBER' : 'ENTER PRODUCT BARCODE';
+  input.placeholder = manualMode === 'rack' ? 'e.g. S4-C97-6430-A' : 'e.g. B15652 or B15652X0XOCK';
+  input.value = '';
+  input.classList.remove('error');
+  error.textContent = '';
+
+  document.getElementById('fsManual').classList.add('show');
+  setTimeout(() => input.focus(), 200);
+}
+
+function closeManualEntry() {
+  document.getElementById('fsManual').classList.remove('show');
+  manualMode = null;
+}
+
+function submitManualEntry() {
+  const input = document.getElementById('manualInput');
+  const error = document.getElementById('manualError');
+  const value = input.value.trim().toUpperCase();
+
+  if (!value) {
+    error.textContent = 'Please enter a value.';
+    input.classList.add('error');
+    return;
+  }
+
+  if (manualMode === 'rack') {
+    // Must match rack format: S + digits + hyphen
+    if (!isRackCode(value)) {
+      error.textContent = 'Invalid rack format. Must start with S + number + hyphen (e.g. S4-...)';
+      input.classList.add('error');
+      return;
+    }
+    closeManualEntry();
+    handleRackScan(value);
+
+  } else if (manualMode === 'product') {
+    // Reject if it looks like a rack code
+    if (isRackCode(value)) {
+      error.textContent = 'This looks like a rack code, not a product.';
+      input.classList.add('error');
+      return;
+    }
+
+    closeManualEntry();
+
+    if (isKnownProduct(value)) {
+      // Starts with B — accept directly
+      handleProductScan(extractProductId(value));
+    } else {
+      // Unknown format — show same confirmation as camera scan flow
+      pendingCode = value;
+      showConfirmation(extractProductId(value));
+    }
+  }
+}
+
+// Allow pressing Enter key to submit
+document.addEventListener('DOMContentLoaded', () => {
+  const input = document.getElementById('manualInput');
+  if (input) {
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') submitManualEntry();
+    });
+    input.addEventListener('input', () => {
+      input.classList.remove('error');
+      document.getElementById('manualError').textContent = '';
+    });
+  }
+});
 
 // ═══════════════════════════════════════════
 //  FLASHLIGHT / TORCH
