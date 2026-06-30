@@ -653,10 +653,15 @@ function startScan(mode) {
 }
 
 function initScanner() {
+  // Larger scan box = more of the frame is analyzed = easier to land a hit
+  // on phones that can't auto-focus precisely or have small/blurry sensors
+  const boxSize = Math.min(window.innerWidth, window.innerHeight) * 0.75;
+
   const config = {
-    fps: 15,
-    qrbox: { width: 280, height: 200 },
-    aspectRatio: 1.5,
+    fps: 10, // lower fps = more processing time per frame = sharper decode on weak CPUs
+    qrbox: { width: boxSize, height: boxSize * 0.65 },
+    aspectRatio: 1.0,
+    disableFlip: false,
     supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA],
     formatsToSupport: [
       Html5QrcodeSupportedFormats.QR_CODE,
@@ -667,14 +672,30 @@ function initScanner() {
       Html5QrcodeSupportedFormats.UPC_A,
       Html5QrcodeSupportedFormats.UPC_E,
     ],
+    // Use the phone's native hardware-accelerated barcode detector when available
+    // (modern Android Chrome) — much faster than the pure-JS decoder fallback
+    useBarCodeDetectorIfSupported: true,
     rememberLastUsedCamera: true,
     showTorchButtonIfSupported: true,
   };
 
-  html5QrCode = new Html5Qrcode('html5qr-code-full-region', { verbose: false });
+  // Request a higher-resolution camera stream — low-res streams are the
+  // single biggest cause of slow/failed scans on budget phone cameras
+  const videoConstraints = {
+    facingMode: 'environment',
+    width:  { ideal: 1920, min: 1280 },
+    height: { ideal: 1080, min: 720 },
+    // Ask the camera to continuously refocus — big win for close-up barcode scans
+    advanced: [{ focusMode: 'continuous' }],
+  };
+
+  html5QrCode = new Html5Qrcode('html5qr-code-full-region', {
+    verbose: false,
+    formatsToSupport: config.formatsToSupport,
+  });
 
   html5QrCode.start(
-    { facingMode: 'environment' },
+    videoConstraints,
     config,
     onScanSuccess,
     () => {}
@@ -682,10 +703,20 @@ function initScanner() {
     const msg = String(err);
     if (msg.includes('ermission') || msg.includes('NotAllowed')) {
       alert('Camera permission denied. Please allow camera access in your browser settings.');
+      closeScanner();
     } else {
-      alert('Camera error. Please try again.');
+      // Fallback: high-res constraints can fail on some older devices —
+      // retry once with basic constraints before giving up
+      html5QrCode.start(
+        { facingMode: 'environment' },
+        config,
+        onScanSuccess,
+        () => {}
+      ).catch(() => {
+        alert('Camera error. Please try again.');
+        closeScanner();
+      });
     }
-    closeScanner();
   });
 }
 
