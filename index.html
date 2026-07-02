@@ -653,13 +653,10 @@ function startScan(mode) {
 }
 
 function initScanner() {
-  const boxSize = Math.min(window.innerWidth, window.innerHeight) * 0.75;
-
   const config = {
-    fps: 10,
-    qrbox: { width: boxSize, height: boxSize * 0.65 },
-    aspectRatio: 1.0,
-    disableFlip: false,
+    fps: 15,
+    qrbox: { width: 280, height: 200 },
+    aspectRatio: 1.5,
     supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA],
     formatsToSupport: [
       Html5QrcodeSupportedFormats.QR_CODE,
@@ -670,62 +667,26 @@ function initScanner() {
       Html5QrcodeSupportedFormats.UPC_A,
       Html5QrcodeSupportedFormats.UPC_E,
     ],
-    useBarCodeDetectorIfSupported: true,
     rememberLastUsedCamera: true,
     showTorchButtonIfSupported: true,
   };
 
-  html5QrCode = new Html5Qrcode('html5qr-code-full-region', {
-    verbose: false,
-    formatsToSupport: config.formatsToSupport,
+  html5QrCode = new Html5Qrcode('html5qr-code-full-region', { verbose: false });
+
+  html5QrCode.start(
+    { facingMode: 'environment' },
+    config,
+    onScanSuccess,
+    () => {}
+  ).catch(err => {
+    const msg = String(err);
+    if (msg.includes('ermission') || msg.includes('NotAllowed')) {
+      alert('Camera permission denied. Please allow camera access in your browser settings.');
+    } else {
+      alert('Camera error. Please try again.');
+    }
+    closeScanner();
   });
-
-  // Progressive camera constraint chain:
-  // 1. First ask for camera permission explicitly so browser prompts the user
-  // 2. Try ideal high-res (no hard minimum so any phone can satisfy it)
-  // 3. Fallback to basic rear camera if ideal fails
-  // 4. Final fallback to any camera (handles edge cases)
-
-  navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
-    .then(stream => {
-      // Permission granted — stop this test stream and start the real scanner
-      stream.getTracks().forEach(t => t.stop());
-      return html5QrCode.start(
-        { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
-        config,
-        onScanSuccess,
-        () => {}
-      );
-    })
-    .catch(err => {
-      const msg = String(err);
-      if (msg.includes('ermission') || msg.includes('NotAllowed') || msg.includes('NotFound')) {
-        // Permission denied — show a clear message
-        alert('Camera access is required to scan barcodes.
-
-Please tap Allow when the browser asks for camera permission, or go to your browser Settings > Site Settings > Camera and allow this site.');
-        closeScanner();
-      } else {
-        // Some other constraint error — try basic fallback
-        html5QrCode.start(
-          { facingMode: 'environment' },
-          config,
-          onScanSuccess,
-          () => {}
-        ).catch(() => {
-          // Last resort — any camera
-          html5QrCode.start(
-            true,
-            config,
-            onScanSuccess,
-            () => {}
-          ).catch(() => {
-            alert('Could not open camera. Please try again.');
-            closeScanner();
-          });
-        });
-      }
-    });
 }
 
 // ═══════════════════════════════════════════
