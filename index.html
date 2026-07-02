@@ -579,7 +579,7 @@ body {
     </button>
   </div>
 
-<!-- Fullscreen confirmation overlay for unknown barcodes -->
+  <!-- Fullscreen confirmation overlay for unknown barcodes -->
   <div class="fs-overlay confirm" id="fsConfirm" style="">
     <div class="fs-tick" style="background:rgba(255,165,0,0.2); font-size:52px;">?</div>
     <div class="fs-title" style="color:var(--amber);">IS THIS A PRODUCT?</div>
@@ -591,7 +591,7 @@ body {
     </div>
   </div>
 
-<!-- Fullscreen manual entry overlay -->
+  <!-- Fullscreen manual entry overlay -->
   <div class="fs-overlay manual" id="fsManual">
     <div class="fs-title" id="manualTitle" style="color:var(--amber);">ENTER RACK NUMBER</div>
     <div class="manual-input-wrap">
@@ -605,7 +605,6 @@ body {
   </div>
 
 <script>
-// ▶ YOUR APPS SCRIPT URL
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwaoyBOBULcQ61MhcGpkyWcALuAD3bXLoK-rHOK0zcNWy-pgMlnEqgk_PMbxMpl2H-0RQ/exec';
 
 // ── State ──
@@ -613,8 +612,8 @@ let currentRack  = null;
 let scanMode     = null;
 let html5QrCode  = null;
 let isScanning   = false;
-let successTimer = null;   // tracks auto-dismiss timer on product success
-let torchOn      = false;  // flashlight state
+let successTimer = null;
+let torchOn      = false;
 
 // ── DOM ──
 const rackDisplay    = document.getElementById('currentRackDisplay');
@@ -644,7 +643,7 @@ function startScan(mode) {
     scanModalHint.textContent = 'Point camera at rack QR code';
   } else {
     scanModalMode.textContent = 'SCAN PRODUCT';
-    scanModalHint.textContent = `Rack: ${currentRack} · Point at product barcode`;
+    scanModalHint.textContent = 'Rack: ' + currentRack + ' · Point at product barcode';
   }
 
   scanModal.style.display = 'flex';
@@ -653,9 +652,16 @@ function startScan(mode) {
 }
 
 function initScanner() {
+  // ── ONLY CHANGES FROM WORKING VERSION ──
+  // 1. qrbox now 85% of screen width so barcode doesn't need precise aiming
+  // 2. fps reduced from 15 to 10 — gives CPU more time per frame to decode
+  // Everything else identical to the working version
+  const boxW = Math.round(window.innerWidth * 0.85);
+  const boxH = Math.round(boxW * 0.5);
+
   const config = {
-    fps: 15,
-    qrbox: { width: 280, height: 200 },
+    fps: 10,
+    qrbox: { width: boxW, height: boxH },
     aspectRatio: 1.5,
     supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA],
     formatsToSupport: [
@@ -693,24 +699,19 @@ function initScanner() {
 //  VALIDATION & CODE PARSING
 // ═══════════════════════════════════════════
 
-// Rack: starts with S + digit(s) + hyphen  e.g. S4-C97-6430-A
 function isRackCode(code) {
   return /^S[0-9]+-/.test(code);
 }
 
-// Known product: starts with B  e.g. B15652X0XOCK or B15652
 function isKnownProduct(code) {
   return /^B/i.test(code);
 }
 
-// Extract stable product ID — everything before first X
-// If no X present, return full code
 function extractProductId(code) {
   const xIndex = code.indexOf('X');
   return xIndex !== -1 ? code.substring(0, xIndex) : code;
 }
 
-// Pending confirmation state
 let pendingCode = null;
 
 function onScanSuccess(decodedText) {
@@ -718,7 +719,6 @@ function onScanSuccess(decodedText) {
   const value = decodedText.trim();
 
   if (scanMode === 'rack') {
-    // In rack mode — only accept rack format
     if (!isRackCode(value)) {
       showScanWarning('Not a valid rack code. Scan the rack QR.');
       return;
@@ -728,18 +728,13 @@ function onScanSuccess(decodedText) {
 
   } else if (scanMode === 'product') {
     if (isRackCode(value)) {
-      // Rack QR scanned in product mode — warn and stay open
       showScanWarning('That is a rack code. Scan a product barcode.');
       return;
     }
-
     if (isKnownProduct(value)) {
-      // Starts with B — accept automatically
       isScanning = true;
       handleProductScan(extractProductId(value));
-
     } else {
-      // Unknown format — pause scanner and ask worker to confirm
       isScanning = true;
       pendingCode = value;
       closeScanner();
@@ -748,7 +743,6 @@ function onScanSuccess(decodedText) {
   }
 }
 
-// Show warning in scanner hint bar — scanner stays open
 let warnTimer = null;
 function showScanWarning(msg) {
   const hint = document.getElementById('scanModalHint');
@@ -762,7 +756,6 @@ function showScanWarning(msg) {
   }, 2000);
 }
 
-// Worker confirmed the unknown code is a product
 function confirmProduct() {
   hideConfirmation();
   if (pendingCode) {
@@ -771,7 +764,6 @@ function confirmProduct() {
   }
 }
 
-// Worker rejected — reopen scanner
 function rejectProduct() {
   hideConfirmation();
   pendingCode = null;
@@ -797,7 +789,6 @@ async function closeScanner() {
   document.body.style.overflow = '';
   scanMode = null;
   isScanning = false;
-  // Reset torch state
   torchOn = false;
   const btn = document.getElementById('btnTorch');
   if (btn) { btn.classList.remove('on'); btn.textContent = '🔦'; }
@@ -809,15 +800,12 @@ async function closeScanner() {
 
 function handleRackScan(rackCode) {
   currentRack = rackCode;
-
-  // Update rack label bar
   rackDisplay.textContent = rackCode;
   rackDisplay.classList.remove('no-rack');
   rackStatusIcon.classList.add('active');
   rackLabelBar.style.borderLeftColor = 'var(--green)';
-  startHint.textContent = `Scanning products for ${rackCode}`;
+  startHint.textContent = 'Scanning products for ' + rackCode;
 
-  // Show bold rack banner below label bar
   const banner = document.getElementById('rackBanner');
   banner.textContent = rackCode;
   banner.classList.add('show');
@@ -825,7 +813,6 @@ function handleRackScan(rackCode) {
   closeScanner();
   playSound('success');
 
-  // Show fullscreen rack success
   showSuccess({
     title:    'RACK SCANNED',
     subtitle: rackCode,
@@ -833,7 +820,6 @@ function handleRackScan(rackCode) {
     showFinishButton: false,
   });
 
-  // Auto-open product scanner after 1.8s
   setTimeout(() => {
     hideSuccess();
     startScan('product');
@@ -854,18 +840,13 @@ async function handleProductScan(barcode) {
     playSound(result.result === 'Duplicate' ? 'warning' : 'success');
 
     const isDupe = result.result === 'Duplicate';
-
     showSuccess({
       title:    isDupe ? 'ALREADY ASSIGNED' : 'PRODUCT SAVED',
       subtitle: barcode,
-      meta:     isDupe
-                  ? `Already linked to ${currentRack}`
-                  : `Saved to ${currentRack}`,
+      meta:     isDupe ? 'Already linked to ' + currentRack : 'Saved to ' + currentRack,
       showFinishButton: true,
     });
 
-    // Auto-dismiss after 5s and open scanner for next product
-    // Timer is cancelled if user taps FINISH THIS RACK
     successTimer = setTimeout(() => {
       hideSuccess();
       startScan('product');
@@ -875,17 +856,15 @@ async function handleProductScan(barcode) {
     showSaving(false);
     playSound('error');
     alert('Unable to save data. Please try again.');
-    // Reopen scanner so worker can retry
     setTimeout(() => startScan('product'), 800);
   }
 }
 
 // ═══════════════════════════════════════════
-//  FINISH RACK — go back to start
+//  FINISH RACK
 // ═══════════════════════════════════════════
 
 function finishRack() {
-  // Cancel auto-dismiss timer so we dont re-open product scanner
   if (successTimer) { clearTimeout(successTimer); successTimer = null; }
   hideSuccess();
   currentRack = null;
@@ -894,9 +873,7 @@ function finishRack() {
   rackStatusIcon.classList.remove('active');
   rackLabelBar.style.borderLeftColor = 'var(--amber)';
   startHint.textContent = 'Tap to scan a rack first';
-  // Hide rack banner
   document.getElementById('rackBanner').classList.remove('show');
-  // Go to rack scan — NOT product scan
   startScan('rack');
 }
 
@@ -905,16 +882,14 @@ function finishRack() {
 // ═══════════════════════════════════════════
 
 function showSuccess({ title, subtitle, meta, showFinishButton }) {
-  fsTitle.textContent    = title;
-  fsSubtitle.textContent = subtitle;
-  fsMeta.textContent     = meta;
+  fsTitle.textContent     = title;
+  fsSubtitle.textContent  = subtitle;
+  fsMeta.textContent      = meta;
   btnFinish.style.display = showFinishButton ? 'block' : 'none';
   fsSuccess.classList.add('show');
 }
 
-function hideSuccess() {
-  fsSuccess.classList.remove('show');
-}
+function hideSuccess() { fsSuccess.classList.remove('show'); }
 
 function showSaving(show) {
   if (show) fsSaving.classList.add('show');
@@ -941,40 +916,26 @@ function saveToSheet(barcode, rack) {
       if (script.parentNode) document.body.removeChild(script);
     }
 
-    window[callbackName] = function(data) {
-      cleanup();
-      resolve(data);
-    };
-
-    script.onerror = () => {
-      cleanup();
-      reject(new Error('Script load failed'));
-    };
-
-    script.src = `${APPS_SCRIPT_URL}?action=save&barcode=${encodeURIComponent(barcode)}&rack=${encodeURIComponent(rack)}&callback=${callbackName}`;
+    window[callbackName] = function(data) { cleanup(); resolve(data); };
+    script.onerror = () => { cleanup(); reject(new Error('Script load failed')); };
+    script.src = APPS_SCRIPT_URL + '?action=save&barcode=' + encodeURIComponent(barcode) + '&rack=' + encodeURIComponent(rack) + '&callback=' + callbackName;
     document.body.appendChild(script);
   });
 }
 
 // ═══════════════════════════════════════════
-//  MANUAL ENTRY (same validation rules as scanning)
+//  MANUAL ENTRY
 // ═══════════════════════════════════════════
 
-let manualMode = null; // 'rack' or 'product'
+let manualMode = null;
 
 function openManualEntry(mode) {
-  // Block manual product entry if no rack is set yet
   if (mode === 'product' && !currentRack) {
     alert('Please scan or enter a rack first.');
     return;
   }
-
   manualMode = mode || 'rack';
-
-  // Close camera scanner if open
-  if (scanModal.style.display === 'flex') {
-    closeScanner();
-  }
+  if (scanModal.style.display === 'flex') closeScanner();
 
   const title = document.getElementById('manualTitle');
   const input = document.getElementById('manualInput');
@@ -1007,7 +968,6 @@ function submitManualEntry() {
   }
 
   if (manualMode === 'rack') {
-    // Must match rack format: S + digits + hyphen
     if (!isRackCode(value)) {
       error.textContent = 'Invalid rack format. Must start with S + number + hyphen (e.g. S4-...)';
       input.classList.add('error');
@@ -1017,34 +977,26 @@ function submitManualEntry() {
     handleRackScan(value);
 
   } else if (manualMode === 'product') {
-    // Reject if it looks like a rack code
     if (isRackCode(value)) {
       error.textContent = 'This looks like a rack code, not a product.';
       input.classList.add('error');
       return;
     }
-
     closeManualEntry();
-
     if (isKnownProduct(value)) {
-      // Starts with B — accept directly
       handleProductScan(extractProductId(value));
     } else {
-      // Unknown format — show same confirmation as camera scan flow
       pendingCode = value;
       showConfirmation(extractProductId(value));
     }
   }
 }
 
-// Allow pressing Enter key to submit
 document.addEventListener('DOMContentLoaded', () => {
   const input = document.getElementById('manualInput');
   if (input) {
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') submitManualEntry();
-    });
-    input.addEventListener('input', () => {
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') submitManualEntry(); });
+    input.addEventListener('input',   () => {
       input.classList.remove('error');
       document.getElementById('manualError').textContent = '';
     });
@@ -1059,25 +1011,14 @@ async function toggleTorch() {
   if (!html5QrCode) return;
   try {
     torchOn = !torchOn;
-    await html5QrCode.applyVideoConstraints({
-      advanced: [{ torch: torchOn }]
-    });
+    await html5QrCode.applyVideoConstraints({ advanced: [{ torch: torchOn }] });
     const btn = document.getElementById('btnTorch');
-    if (torchOn) {
-      btn.classList.add('on');
-      btn.textContent = '💡';
-    } else {
-      btn.classList.remove('on');
-      btn.textContent = '🔦';
-    }
+    if (torchOn) { btn.classList.add('on'); btn.textContent = '💡'; }
+    else         { btn.classList.remove('on'); btn.textContent = '🔦'; }
   } catch (e) {
-    // Torch not supported on this device — silently ignore
     console.log('Torch not supported:', e);
   }
 }
-
-// Reset torch state when scanner closes
-const _origCloseScanner = closeScanner;
 
 // ═══════════════════════════════════════════
 //  AUDIO FEEDBACK
