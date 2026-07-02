@@ -540,66 +540,33 @@ function startScan(mode) {
 }
 
 function initScanner() {
-  // Use full screen width for the scan box — worker doesn't need to aim precisely
-  // No hard minimum resolution so the camera always opens on any device
-  const w = window.innerWidth;
-  const h = window.innerHeight;
-  const boxW = Math.round(w * 0.85);
+  // Large scan box — 85% of screen width so barcode doesn't need precise aiming
+  const boxW = Math.round(window.innerWidth * 0.85);
   const boxH = Math.round(boxW * 0.5);
 
   const config = {
-    fps: 12,
+    fps: 10,
     qrbox: { width: boxW, height: boxH },
-    disableFlip: false,
     supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA],
-    formatsToSupport: [
-      Html5QrcodeSupportedFormats.QR_CODE,
-      Html5QrcodeSupportedFormats.CODE_128,
-      Html5QrcodeSupportedFormats.CODE_39,
-      Html5QrcodeSupportedFormats.EAN_13,
-      Html5QrcodeSupportedFormats.EAN_8,
-      Html5QrcodeSupportedFormats.UPC_A,
-      Html5QrcodeSupportedFormats.UPC_E,
-    ],
-    // Use native hardware BarcodeDetector API when available (Android Chrome 83+)
-    // This is significantly faster than the JS-only decoder fallback
-    useBarCodeDetectorIfSupported: true,
     rememberLastUsedCamera: true,
-    showTorchButtonIfSupported: false, // we have our own torch button
+    showTorchButtonIfSupported: false,
   };
 
-  html5QrCode = new Html5Qrcode('html5qr-code-full-region', {
-    verbose: false,
-    formatsToSupport: config.formatsToSupport,
-  });
+  // Simple constructor — no formatsToSupport here to avoid conflicts
+  html5QrCode = new Html5Qrcode('html5qr-code-full-region', { verbose: false });
 
-  // Simple rear-camera constraint with ideal (not minimum) resolution
-  // "ideal" means the browser uses it if possible but won't fail if not
-  const cameraConstraint = {
-    facingMode: 'environment',
-    width:  { ideal: 1280 },
-    height: { ideal: 720  },
-  };
-
+  // Use plain facingMode only — most reliable across all Android devices
   html5QrCode.start(
-    cameraConstraint,
+    { facingMode: 'environment' },
     config,
     onScanSuccess,
-    () => {} // per-frame failure — ignore
+    () => {}
   ).catch(err => {
     const msg = String(err);
     if (msg.includes('ermission') || msg.includes('NotAllowed')) {
-      alert('Camera access is required.\n\nPlease tap Allow when asked, or go to browser Settings > Site Settings > Camera and allow this site.');
+      alert('Camera access is required.\n\nPlease allow camera access in your browser settings.');
     } else {
-      // Fallback: try with minimal constraints
-      html5QrCode.start(
-        { facingMode: 'environment' },
-        config,
-        onScanSuccess,
-        () => {}
-      ).catch(() => {
-        alert('Could not open camera. Please try again.');
-      });
+      alert('Could not open camera. Please try again.');
     }
     closeScanner();
   });
