@@ -597,6 +597,25 @@ body {
   touch-action: manipulation;
 }
 
+/* ── Undo button ── */
+.btn-undo {
+  padding: 14px 32px;
+  background: transparent;
+  color: rgba(255,255,255,0.7);
+  border: 1px solid rgba(255,255,255,0.3);
+  border-radius: var(--radius-lg);
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+  transition: background 0.15s;
+}
+.btn-undo:active { background: rgba(255,255,255,0.15); }
+
 /* ── Saving spinner ── */
 .fs-spinner {
   width: 72px;
@@ -648,9 +667,6 @@ body {
     </div>
   </main>
 
-  <!-- Rack banner — bold rack number shown below label bar -->
-  <div class="rack-banner" id="rackBanner"></div>
-
   <!-- Camera modal -->
   <div class="scan-modal" id="scanModal" style="display:none;">
     <div class="scan-modal-header">
@@ -658,6 +674,8 @@ body {
       <button class="btn-torch" id="btnTorch" onclick="toggleTorch()" title="Toggle flashlight">🔦</button>
       <button class="btn-close" onclick="closeScanner()">✕</button>
     </div>
+    <!-- Rack banner inside modal — visible at top while scanning products -->
+    <div class="rack-banner" id="rackBanner"></div>
     <div class="scan-modal-body">
       <div id="html5qr-code-full-region"></div>
     </div>
@@ -679,6 +697,9 @@ body {
     <div class="fs-meta" id="fsMeta"></div>
     <button class="btn-finish" id="btnFinish" onclick="finishRack()" style="display:none;">
       FINISH THIS RACK
+    </button>
+    <button class="btn-undo" id="btnUndo" onclick="undoLastScan()" style="display:none;">
+      ↩ UNDO LAST SCAN
     </button>
   </div>
 
@@ -718,6 +739,7 @@ let isScanning   = false;
 let successTimer = null;
 let torchOn      = false;
 let multiMode    = false;  // false = default (one product per rack), true = multiple
+let lastScan     = null;   // { barcode, rack } — used for undo
 
 // ── DOM ──
 const rackDisplay    = document.getElementById('currentRackDisplay');
@@ -945,13 +967,21 @@ async function handleProductScan(barcode) {
 
     const isDupe = result.result === 'Duplicate';
 
+    // Track last scan for undo (only track Added/Appended — duplicates have nothing to undo)
+    if (!isDupe) {
+      lastScan = { barcode: barcode, rack: currentRack };
+    } else {
+      lastScan = null;
+    }
+
     if (multiMode) {
-      // ── MULTIPLE MODE: stay on product scanner, show finish button ──
+      // ── MULTIPLE MODE: stay on product scanner, show finish + undo buttons ──
       showSuccess({
-        title:           isDupe ? 'ALREADY ASSIGNED' : 'PRODUCT SAVED',
-        subtitle:        barcode,
-        meta:            isDupe ? 'Already linked to ' + currentRack : 'Saved to ' + currentRack,
+        title:            isDupe ? 'ALREADY ASSIGNED' : 'PRODUCT SAVED',
+        subtitle:         barcode,
+        meta:             isDupe ? 'Already linked to ' + currentRack : 'Saved to ' + currentRack,
         showFinishButton: true,
+        showUndoButton:   !isDupe,
       });
       // Auto-reopen product scanner after 5s unless worker taps Finish
       successTimer = setTimeout(() => {
@@ -962,10 +992,11 @@ async function handleProductScan(barcode) {
     } else {
       // ── DEFAULT MODE: show success briefly then go back to rack scanner ──
       showSuccess({
-        title:           isDupe ? 'ALREADY ASSIGNED' : 'PRODUCT SAVED',
-        subtitle:        barcode,
-        meta:            isDupe ? 'Already linked to ' + currentRack : 'Saved to ' + currentRack,
+        title:            isDupe ? 'ALREADY ASSIGNED' : 'PRODUCT SAVED',
+        subtitle:         barcode,
+        meta:             isDupe ? 'Already linked to ' + currentRack : 'Saved to ' + currentRack,
         showFinishButton: false,
+        showUndoButton:   !isDupe,
       });
       // Reset rack state and go back to rack scanner after 1.5s
       successTimer = setTimeout(() => {
@@ -981,6 +1012,80 @@ async function handleProductScan(barcode) {
     alert('Unable to save data. Please try again.');
     setTimeout(() => startScan('product'), 800);
   }
+}
+
+// ═══════════════════════════════════════════
+//  UNDO LAST SCAN
+// ═══════════════════════════════════════════
+
+async function undoLastScan() {
+  if (!lastScan) return;
+
+  // Cancel auto-dismiss timer so screen stays while undoing
+  if (successTimer) { clearTimeout(successTimer); successTimer = null; }
+  hideSuccess();
+
+  const { barcode, rack } = lastScan;
+  lastScan = null;
+
+  showSaving(true);
+  document.querySelector('.fs-saving-text').textContent = 'UNDOING…';
+
+  try {
+    const result = await undoOnSheet(barcode, rack);
+    document.querySelector('.fs-saving-text').textContent = 'SAVING…';
+    showSaving(false);
+    playSound('warning');
+
+    // Show brief undo confirmation
+    showSuccess({
+      title:            'SCAN UNDONE',
+      subtitle:         barcode,
+      meta:             'Removed from ' + rack,
+      showFinishButton: false,
+      showUndoButton:   false,
+    });
+
+    setTimeout(() => {
+      hideSuccess();
+      if (multiMode) {
+        startScan('product');
+      } else {
+        resetRack();
+        startScan('rack');
+      }
+    }, 1500);
+
+  } catch (err) {
+    document.querySelector('.fs-saving-text').textContent = 'SAVING…';
+    showSaving(false);
+    alert('Unable to undo. Please correct manually in the sheet.');
+    if (multiMode) startScan('product');
+    else { resetRack(); startScan('rack'); }
+  }
+}
+
+function undoOnSheet(barcode, rack) {
+  return new Promise((resolve, reject) => {
+    const callbackName = 'cb_' + Date.now();
+    const script = document.createElement('script');
+
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error('Request timed out'));
+    }, 10000);
+
+    function cleanup() {
+      clearTimeout(timer);
+      delete window[callbackName];
+      if (script.parentNode) document.body.removeChild(script);
+    }
+
+    window[callbackName] = function(data) { cleanup(); resolve(data); };
+    script.onerror = () => { cleanup(); reject(new Error('Script load failed')); };
+    script.src = APPS_SCRIPT_URL + '?action=undo&barcode=' + encodeURIComponent(barcode) + '&rack=' + encodeURIComponent(rack) + '&callback=' + callbackName;
+    document.body.appendChild(script);
+  });
 }
 
 // ═══════════════════════════════════════════
@@ -1032,11 +1137,12 @@ function finishRack() {
 //  FULLSCREEN OVERLAYS
 // ═══════════════════════════════════════════
 
-function showSuccess({ title, subtitle, meta, showFinishButton }) {
+function showSuccess({ title, subtitle, meta, showFinishButton, showUndoButton }) {
   fsTitle.textContent     = title;
   fsSubtitle.textContent  = subtitle;
   fsMeta.textContent      = meta;
   btnFinish.style.display = showFinishButton ? 'block' : 'none';
+  document.getElementById('btnUndo').style.display = showUndoButton ? 'block' : 'none';
   fsSuccess.classList.add('show');
 }
 
