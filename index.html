@@ -150,6 +150,94 @@ body {
   letter-spacing: 0.03em;
 }
 
+/* ── Mode Toggle ── */
+.mode-toggle-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  max-width: 360px;
+}
+
+.mode-toggle-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.mode-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 50px;
+  padding: 6px 6px 6px 18px;
+  width: 100%;
+}
+
+.mode-toggle-text {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 0.02em;
+}
+
+.mode-toggle-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 500;
+  margin-top: 2px;
+}
+
+/* The actual switch */
+.toggle-switch {
+  position: relative;
+  width: 52px;
+  height: 30px;
+  flex-shrink: 0;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+
+.toggle-slider {
+  position: absolute;
+  inset: 0;
+  background: var(--border);
+  border-radius: 30px;
+  cursor: pointer;
+  transition: background 0.25s;
+}
+
+.toggle-slider:before {
+  content: '';
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  left: 4px;
+  top: 4px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.25s;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background: var(--amber);
+}
+
+.toggle-switch input:checked + .toggle-slider:before {
+  transform: translateX(22px);
+}
+
 /* ── Scan Modal (camera) ── */
 .scan-modal {
   position: fixed;
@@ -543,6 +631,21 @@ body {
     <button class="btn-start" onclick="startScan('rack')">START SCANNING</button>
     <p class="btn-start-hint" id="startHint">Tap to scan a rack first</p>
     <button class="manual-link" onclick="openManualEntry('rack')">Type rack number manually</button>
+
+    <!-- Mode toggle -->
+    <div class="mode-toggle-wrap">
+      <div class="mode-toggle-label">Scan Mode</div>
+      <div class="mode-toggle-row">
+        <div>
+          <div class="mode-toggle-text" id="modeLabel">Default — One product per rack</div>
+          <div class="mode-toggle-desc" id="modeDesc">Returns to rack scan after each product</div>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="modeToggle" onchange="onModeToggle()" />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </div>
   </main>
 
   <!-- Rack banner — bold rack number shown below label bar -->
@@ -614,6 +717,7 @@ let html5QrCode  = null;
 let isScanning   = false;
 let successTimer = null;
 let torchOn      = false;
+let multiMode    = false;  // false = default (one product per rack), true = multiple
 
 // ── DOM ──
 const rackDisplay    = document.getElementById('currentRackDisplay');
@@ -840,17 +944,36 @@ async function handleProductScan(barcode) {
     playSound(result.result === 'Duplicate' ? 'warning' : 'success');
 
     const isDupe = result.result === 'Duplicate';
-    showSuccess({
-      title:    isDupe ? 'ALREADY ASSIGNED' : 'PRODUCT SAVED',
-      subtitle: barcode,
-      meta:     isDupe ? 'Already linked to ' + currentRack : 'Saved to ' + currentRack,
-      showFinishButton: true,
-    });
 
-    successTimer = setTimeout(() => {
-      hideSuccess();
-      startScan('product');
-    }, 5000);
+    if (multiMode) {
+      // ── MULTIPLE MODE: stay on product scanner, show finish button ──
+      showSuccess({
+        title:           isDupe ? 'ALREADY ASSIGNED' : 'PRODUCT SAVED',
+        subtitle:        barcode,
+        meta:            isDupe ? 'Already linked to ' + currentRack : 'Saved to ' + currentRack,
+        showFinishButton: true,
+      });
+      // Auto-reopen product scanner after 5s unless worker taps Finish
+      successTimer = setTimeout(() => {
+        hideSuccess();
+        startScan('product');
+      }, 5000);
+
+    } else {
+      // ── DEFAULT MODE: show success briefly then go back to rack scanner ──
+      showSuccess({
+        title:           isDupe ? 'ALREADY ASSIGNED' : 'PRODUCT SAVED',
+        subtitle:        barcode,
+        meta:            isDupe ? 'Already linked to ' + currentRack : 'Saved to ' + currentRack,
+        showFinishButton: false,
+      });
+      // Reset rack state and go back to rack scanner after 1.5s
+      successTimer = setTimeout(() => {
+        hideSuccess();
+        resetRack();
+        startScan('rack');
+      }, 1500);
+    }
 
   } catch (err) {
     showSaving(false);
@@ -858,6 +981,34 @@ async function handleProductScan(barcode) {
     alert('Unable to save data. Please try again.');
     setTimeout(() => startScan('product'), 800);
   }
+}
+
+// ═══════════════════════════════════════════
+//  MODE TOGGLE
+// ═══════════════════════════════════════════
+
+function onModeToggle() {
+  multiMode = document.getElementById('modeToggle').checked;
+  const label = document.getElementById('modeLabel');
+  const desc  = document.getElementById('modeDesc');
+  if (multiMode) {
+    label.textContent = 'Multiple — Many products per rack';
+    desc.textContent  = 'Stays on product scanner, tap Finish when done';
+  } else {
+    label.textContent = 'Default — One product per rack';
+    desc.textContent  = 'Returns to rack scan after each product';
+  }
+}
+
+// Clears rack state back to initial — used in default mode after each product
+function resetRack() {
+  currentRack = null;
+  rackDisplay.textContent = 'NONE';
+  rackDisplay.classList.add('no-rack');
+  rackStatusIcon.classList.remove('active');
+  rackLabelBar.style.borderLeftColor = 'var(--amber)';
+  startHint.textContent = 'Tap to scan a rack first';
+  document.getElementById('rackBanner').classList.remove('show');
 }
 
 // ═══════════════════════════════════════════
