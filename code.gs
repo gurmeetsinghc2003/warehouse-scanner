@@ -23,10 +23,22 @@ function doGet(e) {
     var barcode = params.barcode || '';
     var rack    = params.rack    || '';
 
-    if (!barcode || !rack) {
-      result = { success: false, result: 'Error', message: 'Missing barcode or rack parameter.' };
+    var action = params.action || '';
+
+    if (action === 'undo') {
+      if (!barcode || !rack) {
+        result = { success: false, result: 'Error', message: 'Missing barcode or rack for undo.' };
+      } else {
+        result = processUndo(barcode, rack);
+      }
+    } else if (action === 'save') {
+      if (!barcode || !rack) {
+        result = { success: false, result: 'Error', message: 'Missing barcode or rack parameter.' };
+      } else {
+        result = processScan(barcode, rack);
+      }
     } else {
-      result = processScan(barcode, rack);
+      result = { success: false, result: 'Error', message: 'Unknown action: ' + action };
     }
   } catch (err) {
     Logger.log('doGet error: ' + err.toString());
@@ -88,6 +100,50 @@ function processScan(barcode, rack) {
 
   writeLog(sheetScanLog, now, barcode, rack, result);
   return { success: true, result: result, message: message };
+}
+
+function processUndo(barcode, rack) {
+  var ss            = SpreadsheetApp.getActiveSpreadsheet();
+  var sheetProducts = getOrCreateSheet(ss, SHEET_PRODUCTS, ['ProductBarcode', 'RackNumbers', 'LastUpdated']);
+  var sheetScanLog  = getOrCreateSheet(ss, SHEET_SCANLOG,  ['Timestamp', 'ProductBarcode', 'RackScanned', 'Result']);
+  var now           = formatTimestamp(new Date());
+  var data          = sheetProducts.getDataRange().getValues();
+
+  var rowIndex = -1;
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][COL_BARCODE - 1]).trim() === barcode) {
+      rowIndex = i;
+      break;
+    }
+  }
+
+  if (rowIndex === -1) {
+    return { success: false, result: 'Error', message: 'Product not found in sheet.' };
+  }
+
+  var existingRacks = String(data[rowIndex][COL_RACKS - 1]).trim();
+  var rackList      = existingRacks.split(',').map(function(r) { return r.trim(); });
+  var rackIndex     = rackList.indexOf(rack);
+
+  if (rackIndex === -1) {
+    return { success: false, result: 'Error', message: 'Rack not found for this product.' };
+  }
+
+  // Remove the rack from the list
+  rackList.splice(rackIndex, 1);
+  var sheetRow = rowIndex + 1;
+
+  if (rackList.length === 0) {
+    // No racks left — delete the entire row
+    sheetProducts.deleteRow(sheetRow);
+  } else {
+    // Update with remaining racks
+    sheetProducts.getRange(sheetRow, COL_RACKS).setValue(rackList.join(','));
+    sheetProducts.getRange(sheetRow, COL_LASTUPDATED).setValue(now);
+  }
+
+  writeLog(sheetScanLog, now, barcode, rack, 'Undone');
+  return { success: true, result: 'Undone', message: 'Removed ' + rack + ' from ' + barcode };
 }
 
 function writeLog(sheet, timestamp, barcode, rack, result) {
