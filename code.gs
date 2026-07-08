@@ -1,179 +1,1332 @@
-/**
- * WAREHOUSE RACK SCANNER — Code.gs (Final)
- */
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#1A1F2E" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Rack Scanner</title>
 
-var SHEET_PRODUCTS = 'ProductLocations';
-var SHEET_SCANLOG  = 'ScanLog';
-var COL_BARCODE     = 1;
-var COL_RACKS       = 2;
-var COL_LASTUPDATED = 3;
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&family=Roboto+Mono:wght@500;700&display=swap" rel="stylesheet" />
 
-function doGet(e) {
-  // No action = serve the HTML app
-  if (!e.parameter.action) {
-    return HtmlService.createHtmlOutputFromFile('index')
-      .setTitle('Rack Scanner')
-      .addMetaTag('viewport', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no')
-      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
-  }
-
-  var result = {};
-  try {
-    var params  = e.parameter;
-    var barcode = params.barcode || '';
-    var rack    = params.rack    || '';
-
-    var action = params.action || '';
-
-    if (action === 'undo') {
-      if (!barcode || !rack) {
-        result = { success: false, result: 'Error', message: 'Missing barcode or rack for undo.' };
-      } else {
-        result = processUndo(barcode, rack);
-      }
-    } else if (action === 'save') {
-      if (!barcode || !rack) {
-        result = { success: false, result: 'Error', message: 'Missing barcode or rack parameter.' };
-      } else {
-        result = processScan(barcode, rack);
-      }
-    } else {
-      result = { success: false, result: 'Error', message: 'Unknown action: ' + action };
-    }
-  } catch (err) {
-    Logger.log('doGet error: ' + err.toString());
-    result = { success: false, result: 'Error', message: 'Server error: ' + err.message };
-  }
-
-  // JSONP support — required for GitHub Pages cross-origin requests
-  var callback = e.parameter.callback;
-  if (callback) {
-    return ContentService
-      .createTextOutput(callback + '(' + JSON.stringify(result) + ')')
-      .setMimeType(ContentService.MimeType.JAVASCRIPT);
-  }
-
-  return ContentService
-    .createTextOutput(JSON.stringify(result))
-    .setMimeType(ContentService.MimeType.JSON);
+<style>
+:root {
+  --bg:           #1A1F2E;
+  --bg-card:      #242A3A;
+  --bg-modal:     #0D1017;
+  --border:       #2E3650;
+  --amber:        #FFA500;
+  --amber-dim:    #CC8400;
+  --green:        #00C851;
+  --red:          #FF4444;
+  --text-primary: #F0F2F8;
+  --text-muted:   #7A84A0;
+  --font-ui:      'Inter', system-ui, sans-serif;
+  --font-mono:    'Roboto Mono', 'Courier New', monospace;
+  --radius-lg:    16px;
 }
 
-function processScan(barcode, rack) {
-  var ss            = SpreadsheetApp.getActiveSpreadsheet();
-  var sheetProducts = getOrCreateSheet(ss, SHEET_PRODUCTS, ['ProductBarcode', 'RackNumbers', 'LastUpdated']);
-  var sheetScanLog  = getOrCreateSheet(ss, SHEET_SCANLOG,  ['Timestamp', 'ProductBarcode', 'RackScanned', 'Result']);
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-  var now  = formatTimestamp(new Date());
-  var data = sheetProducts.getDataRange().getValues();
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+}
 
-  var rowIndex = -1;
-  for (var i = 1; i < data.length; i++) {
-    if (String(data[i][COL_BARCODE - 1]).trim() === barcode) {
-      rowIndex = i;
-      break;
-    }
-  }
+body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  padding-bottom: env(safe-area-inset-bottom);
+}
 
-  var result;
-  var message;
+/* ── Rack Label Bar ── */
+.rack-label-bar {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  background: var(--bg-card);
+  border-bottom: 2px solid var(--border);
+  box-shadow: 0 2px 12px rgba(0,0,0,0.4);
+  border-left: 5px solid var(--amber);
+  transition: border-left-color 0.4s;
+}
 
-  if (rowIndex === -1) {
-    sheetProducts.appendRow([barcode, rack, now]);
-    result  = 'Added';
-    message = 'Product added with rack ' + rack;
+.rack-label-eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  flex-shrink: 0;
+  min-width: 90px;
+}
+
+.rack-label-value {
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--amber);
+  letter-spacing: 0.04em;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rack-label-value.no-rack {
+  color: var(--text-muted);
+  font-size: 16px;
+}
+
+.rack-label-icon {
+  font-size: 12px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  transition: color 0.3s;
+}
+
+.rack-label-icon.active {
+  color: var(--green);
+  animation: pulse-dot 2s infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.3; }
+}
+
+/* ── Main Content ── */
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  padding: 32px 24px;
+}
+
+/* ── Start Button ── */
+.btn-start {
+  width: 100%;
+  max-width: 360px;
+  padding: 28px 20px;
+  background: var(--amber);
+  color: #000;
+  border: none;
+  border-radius: var(--radius-lg);
+  font-family: var(--font-ui);
+  font-weight: 900;
+  font-size: 24px;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  box-shadow: 0 4px 24px rgba(255,165,0,0.35);
+  border-left: 5px solid var(--amber-dim);
+  touch-action: manipulation;
+  transition: transform 0.1s;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.btn-start:active { transform: scale(0.97); }
+
+.btn-start-hint {
+  font-size: 14px;
+  color: var(--text-muted);
+  text-align: center;
+  letter-spacing: 0.03em;
+}
+
+/* ── Mode Toggle ── */
+.mode-toggle-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  max-width: 360px;
+}
+
+.mode-toggle-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.mode-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 50px;
+  padding: 6px 6px 6px 18px;
+  width: 100%;
+}
+
+.mode-toggle-text {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 0.02em;
+}
+
+.mode-toggle-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 500;
+  margin-top: 2px;
+}
+
+/* The actual switch */
+.toggle-switch {
+  position: relative;
+  width: 52px;
+  height: 30px;
+  flex-shrink: 0;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+
+.toggle-slider {
+  position: absolute;
+  inset: 0;
+  background: var(--border);
+  border-radius: 30px;
+  cursor: pointer;
+  transition: background 0.25s;
+}
+
+.toggle-slider:before {
+  content: '';
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  left: 4px;
+  top: 4px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.25s;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background: var(--amber);
+}
+
+.toggle-switch input:checked + .toggle-slider:before {
+  transform: translateX(22px);
+}
+
+/* ── Scan Modal (camera) ── */
+.scan-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  background: var(--bg-modal);
+  display: flex;
+  flex-direction: column;
+}
+
+.scan-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-card);
+  flex-shrink: 0;
+}
+
+.scan-modal-mode {
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.15em;
+  color: var(--amber);
+}
+
+.btn-close {
+  background: var(--border);
+  border: none;
+  color: var(--text-primary);
+  font-size: 18px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: manipulation;
+}
+
+.scan-modal-body {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+#html5qr-code-full-region {
+  width: 100% !important;
+  height: 100% !important;
+  border: none !important;
+}
+
+#html5qr-code-full-region video {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+}
+
+#html5qr-code-full-region img { display: none !important; }
+#html5qr-code-full-region__dashboard { display: none !important; }
+
+.scan-modal-hint {
+  padding: 16px 20px;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  background: var(--bg-card);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+/* ── Fullscreen Overlay (success / saving) ── */
+.fs-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 400;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  padding: 40px 32px;
+  text-align: center;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  pointer-events: none;
+}
+
+.fs-overlay.show {
+  opacity: 1;
+  pointer-events: all;
+}
+
+/* Green success overlay */
+.fs-overlay.success {
+  background: #00A843;
+}
+
+/* Dark saving overlay */
+.fs-overlay.saving {
+  background: rgba(13, 16, 23, 0.96);
+}
+
+/* ── Success tick ── */
+.fs-tick {
+  width: 110px;
+  height: 110px;
+  background: rgba(255,255,255,0.2);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 60px;
+  line-height: 1;
+  animation: pop-in 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes pop-in {
+  0%   { transform: scale(0.4); opacity: 0; }
+  100% { transform: scale(1);   opacity: 1; }
+}
+
+.fs-title {
+  font-size: 28px;
+  font-weight: 900;
+  color: #fff;
+  letter-spacing: 0.02em;
+}
+
+.fs-subtitle {
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.85);
+  letter-spacing: 0.04em;
+  word-break: break-all;
+}
+
+.fs-meta {
+  font-size: 14px;
+  color: rgba(255,255,255,0.65);
+  letter-spacing: 0.03em;
+}
+
+/* ── Finish Scan Button (on success overlay) ── */
+.btn-finish {
+  margin-top: 12px;
+  padding: 18px 40px;
+  background: rgba(255,255,255,0.2);
+  color: #fff;
+  border: 2px solid rgba(255,255,255,0.5);
+  border-radius: var(--radius-lg);
+  font-family: var(--font-ui);
+  font-weight: 800;
+  font-size: 17px;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+  transition: background 0.15s;
+}
+
+.btn-finish:active { background: rgba(255,255,255,0.35); }
+
+/* ── Confirmation overlay ── */
+.fs-overlay.confirm {
+  background: #1A1F2E;
+}
+
+.fs-confirm-code {
+  font-family: var(--font-mono);
+  font-size: 26px;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(255,255,255,0.08);
+  border-radius: 12px;
+  padding: 16px 28px;
+  word-break: break-all;
+  letter-spacing: 0.04em;
+}
+
+.fs-confirm-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  max-width: 320px;
+}
+
+.btn-confirm-yes {
+  padding: 20px;
+  background: var(--green);
+  color: #000;
+  border: none;
+  border-radius: var(--radius-lg);
+  font-family: var(--font-ui);
+  font-weight: 900;
+  font-size: 18px;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.btn-confirm-no {
+  padding: 20px;
+  background: transparent;
+  color: var(--red);
+  border: 2px solid var(--red);
+  border-radius: var(--radius-lg);
+  font-family: var(--font-ui);
+  font-weight: 900;
+  font-size: 18px;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+/* ── Flashlight button ── */
+.btn-torch {
+  background: rgba(255,255,255,0.1);
+  border: 2px solid rgba(255,255,255,0.25);
+  color: var(--text-primary);
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  touch-action: manipulation;
+  flex-shrink: 0;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.btn-torch.on {
+  background: rgba(255,165,0,0.25);
+  border-color: var(--amber);
+}
+
+/* ── Rack banner shown below label bar after rack scanned ── */
+.rack-banner {
+  background: var(--green);
+  color: #000;
+  text-align: center;
+  padding: 10px 20px;
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  display: none;
+  word-break: break-all;
+}
+
+.rack-banner.show { display: block; }
+
+/* ── Manual entry link ── */
+.manual-link {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: underline;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  touch-action: manipulation;
+  padding: 8px;
+}
+
+.manual-link:active { color: var(--amber); }
+
+/* ── Manual entry overlay ── */
+.fs-overlay.manual {
+  background: var(--bg);
+}
+
+.manual-input-wrap {
+  width: 100%;
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.manual-input {
+  width: 100%;
+  padding: 18px 16px;
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  background: var(--bg-card);
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  color: var(--text-primary);
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.manual-input:focus {
+  outline: none;
+  border-color: var(--amber);
+}
+
+.manual-input.error {
+  border-color: var(--red);
+}
+
+.manual-error-msg {
+  font-size: 13px;
+  color: var(--red);
+  font-weight: 600;
+  min-height: 18px;
+  text-align: center;
+}
+
+.manual-buttons {
+  display: flex;
+  gap: 12px;
+  width: 100%;
+  max-width: 360px;
+}
+
+.btn-manual-submit {
+  flex: 1;
+  padding: 18px;
+  background: var(--green);
+  color: #000;
+  border: none;
+  border-radius: var(--radius-lg);
+  font-family: var(--font-ui);
+  font-weight: 900;
+  font-size: 16px;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.btn-manual-cancel {
+  flex: 1;
+  padding: 18px;
+  background: transparent;
+  color: var(--text-muted);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-lg);
+  font-family: var(--font-ui);
+  font-weight: 800;
+  font-size: 16px;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+/* ── Persistent undo bar (shown below scanner hint) ── */
+.undo-bar {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px 10px 20px;
+  background: #2A1F0E;
+  border-top: 1px solid #5C3D00;
+  flex-shrink: 0;
+}
+
+.undo-bar.show { display: flex; }
+
+.undo-bar-text {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--amber);
+  letter-spacing: 0.03em;
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  margin-right: 12px;
+}
+
+.btn-undo-small {
+  background: var(--amber);
+  color: #000;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-family: var(--font-ui);
+  font-weight: 800;
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  touch-action: manipulation;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* ── Saving spinner ── */
+.fs-spinner {
+  width: 72px;
+  height: 72px;
+  border: 5px solid rgba(255,255,255,0.15);
+  border-top-color: var(--amber);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.fs-saving-text {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.1em;
+}
+</style>
+</head>
+<body>
+
+  <!-- Always-visible rack bar -->
+  <div class="rack-label-bar" id="rackLabelBar">
+    <span class="rack-label-eyebrow">CURRENT RACK</span>
+    <span class="rack-label-value no-rack" id="currentRackDisplay">NONE</span>
+    <span class="rack-label-icon" id="rackStatusIcon">⬤</span>
+  </div>
+
+  <!-- Main screen — single button -->
+  <main class="main-content">
+    <button class="btn-start" onclick="startScan('rack')">START SCANNING</button>
+    <p class="btn-start-hint" id="startHint">Tap to scan a rack first</p>
+    <button class="manual-link" onclick="openManualEntry('rack')">Type rack number manually</button>
+
+    <!-- Mode toggle -->
+    <div class="mode-toggle-wrap">
+      <div class="mode-toggle-label">Scan Mode</div>
+      <div class="mode-toggle-row">
+        <div>
+          <div class="mode-toggle-text" id="modeLabel">Default — One product per rack</div>
+          <div class="mode-toggle-desc" id="modeDesc">Returns to rack scan after each product</div>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="modeToggle" onchange="onModeToggle()" />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </div>
+  </main>
+
+  <!-- Camera modal -->
+  <div class="scan-modal" id="scanModal" style="display:none;">
+    <div class="scan-modal-header">
+      <span class="scan-modal-mode" id="scanModalMode">SCAN RACK</span>
+      <button class="btn-torch" id="btnTorch" onclick="toggleTorch()" title="Toggle flashlight">🔦</button>
+      <button class="btn-close" onclick="closeScanner()">✕</button>
+    </div>
+    <!-- Rack banner inside modal — visible at top while scanning products -->
+    <div class="rack-banner" id="rackBanner"></div>
+    <div class="scan-modal-body">
+      <div id="html5qr-code-full-region"></div>
+    </div>
+    <div class="scan-modal-hint" id="scanModalHint">Point camera at rack QR code</div>
+    <!-- Persistent undo bar — appears after a successful product scan -->
+    <div class="undo-bar" id="undoBar">
+      <span class="undo-bar-text" id="undoBarText">↩ Last: —</span>
+      <button class="btn-undo-small" onclick="undoLastScan()">UNDO</button>
+    </div>
+    <button class="manual-link" onclick="openManualEntry(scanMode)" style="background:var(--bg-card);">⌨ Barcode damaged? Enter manually</button>
+  </div>
+
+  <!-- Fullscreen saving overlay -->
+  <div class="fs-overlay saving" id="fsSaving">
+    <div class="fs-spinner"></div>
+    <div class="fs-saving-text">SAVING…</div>
+  </div>
+
+  <!-- Fullscreen success overlay -->
+  <div class="fs-overlay success" id="fsSuccess">
+    <div class="fs-tick">✓</div>
+    <div class="fs-title" id="fsTitle">RACK SCANNED</div>
+    <div class="fs-subtitle" id="fsSubtitle"></div>
+    <div class="fs-meta" id="fsMeta"></div>
+    <button class="btn-finish" id="btnFinish" onclick="finishRack()" style="display:none;">
+      FINISH THIS RACK
+    </button>
+  </div>
+
+  <!-- Fullscreen confirmation overlay for unknown barcodes -->
+  <div class="fs-overlay confirm" id="fsConfirm" style="">
+    <div class="fs-tick" style="background:rgba(255,165,0,0.2); font-size:52px;">?</div>
+    <div class="fs-title" style="color:var(--amber);">IS THIS A PRODUCT?</div>
+    <div class="fs-confirm-code" id="confirmCode"></div>
+    <div class="fs-meta" style="color:var(--text-muted);">Unknown barcode format detected.<br>Is this a product you want to save?</div>
+    <div class="fs-confirm-buttons">
+      <button class="btn-confirm-yes" onclick="confirmProduct()">✓ YES, SAVE IT</button>
+      <button class="btn-confirm-no" onclick="rejectProduct()">✕ NO, SCAN AGAIN</button>
+    </div>
+  </div>
+
+  <!-- Fullscreen manual entry overlay -->
+  <div class="fs-overlay manual" id="fsManual">
+    <div class="fs-title" id="manualTitle" style="color:var(--amber);">ENTER RACK NUMBER</div>
+    <div class="manual-input-wrap">
+      <input type="text" class="manual-input" id="manualInput" placeholder="e.g. S4-C97-6430-A" autocomplete="off" autocapitalize="characters" />
+      <div class="manual-error-msg" id="manualError"></div>
+    </div>
+    <div class="manual-buttons">
+      <button class="btn-manual-cancel" onclick="closeManualEntry()">CANCEL</button>
+      <button class="btn-manual-submit" onclick="submitManualEntry()">SUBMIT</button>
+    </div>
+  </div>
+
+<script>
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwaoyBOBULcQ61MhcGpkyWcALuAD3bXLoK-rHOK0zcNWy-pgMlnEqgk_PMbxMpl2H-0RQ/exec';
+
+// ── State ──
+let currentRack  = null;
+let scanMode     = null;
+let html5QrCode  = null;
+let isScanning   = false;
+let successTimer = null;
+let torchOn      = false;
+let multiMode    = false;  // false = default (one product per rack), true = multiple
+let lastScan     = null;   // { barcode, rack } — used for undo
+
+// ── DOM ──
+const rackDisplay    = document.getElementById('currentRackDisplay');
+const rackStatusIcon = document.getElementById('rackStatusIcon');
+const rackLabelBar   = document.getElementById('rackLabelBar');
+const scanModal      = document.getElementById('scanModal');
+const scanModalMode  = document.getElementById('scanModalMode');
+const scanModalHint  = document.getElementById('scanModalHint');
+const startHint      = document.getElementById('startHint');
+const fsSaving       = document.getElementById('fsSaving');
+const fsSuccess      = document.getElementById('fsSuccess');
+const fsTitle        = document.getElementById('fsTitle');
+const fsSubtitle     = document.getElementById('fsSubtitle');
+const fsMeta         = document.getElementById('fsMeta');
+const btnFinish      = document.getElementById('btnFinish');
+
+// ═══════════════════════════════════════════
+//  SCANNER
+// ═══════════════════════════════════════════
+
+function startScan(mode) {
+  scanMode = mode;
+  isScanning = false;
+
+  if (mode === 'rack') {
+    scanModalMode.textContent = 'SCAN RACK';
+    scanModalHint.textContent = 'Point camera at rack QR code';
   } else {
-    var existingRacks = String(data[rowIndex][COL_RACKS - 1]).trim();
-    var rackList      = existingRacks.split(',').map(function(r) { return r.trim(); });
+    scanModalMode.textContent = 'SCAN PRODUCT';
+    scanModalHint.textContent = 'Rack: ' + currentRack + ' · Point at product barcode';
+  }
 
-    if (rackList.indexOf(rack) !== -1) {
-      result  = 'Duplicate';
-      message = 'Rack ' + rack + ' already assigned to ' + barcode;
+  scanModal.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+  setTimeout(initScanner, 100);
+}
+
+function initScanner() {
+  // ── ONLY CHANGES FROM WORKING VERSION ──
+  // 1. qrbox now 85% of screen width so barcode doesn't need precise aiming
+  // 2. fps reduced from 15 to 10 — gives CPU more time per frame to decode
+  // Everything else identical to the working version
+  const boxW = Math.round(window.innerWidth * 0.85);
+  const boxH = Math.round(boxW * 0.5);
+
+  const config = {
+    fps: 10,
+    qrbox: { width: boxW, height: boxH },
+    aspectRatio: 1.5,
+    supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA],
+    formatsToSupport: [
+      Html5QrcodeSupportedFormats.QR_CODE,
+      Html5QrcodeSupportedFormats.CODE_128,
+      Html5QrcodeSupportedFormats.CODE_39,
+      Html5QrcodeSupportedFormats.EAN_13,
+      Html5QrcodeSupportedFormats.EAN_8,
+      Html5QrcodeSupportedFormats.UPC_A,
+      Html5QrcodeSupportedFormats.UPC_E,
+    ],
+    rememberLastUsedCamera: true,
+    showTorchButtonIfSupported: true,
+  };
+
+  html5QrCode = new Html5Qrcode('html5qr-code-full-region', { verbose: false });
+
+  html5QrCode.start(
+    { facingMode: 'environment' },
+    config,
+    onScanSuccess,
+    () => {}
+  ).catch(err => {
+    const msg = String(err);
+    if (msg.includes('ermission') || msg.includes('NotAllowed')) {
+      alert('Camera permission denied. Please allow camera access in your browser settings.');
     } else {
-      var updatedRacks = existingRacks + ',' + rack;
-      var sheetRow     = rowIndex + 1;
-      sheetProducts.getRange(sheetRow, COL_RACKS).setValue(updatedRacks);
-      sheetProducts.getRange(sheetRow, COL_LASTUPDATED).setValue(now);
-      result  = 'Appended';
-      message = 'Rack ' + rack + ' added to ' + barcode + '. Total: ' + (rackList.length + 1);
+      alert('Camera error. Please try again.');
     }
-  }
-
-  writeLog(sheetScanLog, now, barcode, rack, result);
-  return { success: true, result: result, message: message };
+    closeScanner();
+  });
 }
 
-function processUndo(barcode, rack) {
-  var ss            = SpreadsheetApp.getActiveSpreadsheet();
-  var sheetProducts = getOrCreateSheet(ss, SHEET_PRODUCTS, ['ProductBarcode', 'RackNumbers', 'LastUpdated']);
-  var sheetScanLog  = getOrCreateSheet(ss, SHEET_SCANLOG,  ['Timestamp', 'ProductBarcode', 'RackScanned', 'Result']);
-  var now           = formatTimestamp(new Date());
-  var data          = sheetProducts.getDataRange().getValues();
+// ═══════════════════════════════════════════
+//  VALIDATION & CODE PARSING
+// ═══════════════════════════════════════════
 
-  var rowIndex = -1;
-  for (var i = 1; i < data.length; i++) {
-    if (String(data[i][COL_BARCODE - 1]).trim() === barcode) {
-      rowIndex = i;
-      break;
-    }
-  }
-
-  if (rowIndex === -1) {
-    return { success: false, result: 'Error', message: 'Product not found in sheet.' };
-  }
-
-  var existingRacks = String(data[rowIndex][COL_RACKS - 1]).trim();
-  var rackList      = existingRacks.split(',').map(function(r) { return r.trim(); });
-  var rackIndex     = rackList.indexOf(rack);
-
-  if (rackIndex === -1) {
-    return { success: false, result: 'Error', message: 'Rack not found for this product.' };
-  }
-
-  // Remove the rack from the list
-  rackList.splice(rackIndex, 1);
-  var sheetRow = rowIndex + 1;
-
-  if (rackList.length === 0) {
-    // No racks left — delete the entire row
-    sheetProducts.deleteRow(sheetRow);
-  } else {
-    // Update with remaining racks
-    sheetProducts.getRange(sheetRow, COL_RACKS).setValue(rackList.join(','));
-    sheetProducts.getRange(sheetRow, COL_LASTUPDATED).setValue(now);
-  }
-
-  writeLog(sheetScanLog, now, barcode, rack, 'Undone');
-  return { success: true, result: 'Undone', message: 'Removed ' + rack + ' from ' + barcode };
+function isRackCode(code) {
+  return /^S[0-9]+-/.test(code);
 }
 
-function writeLog(sheet, timestamp, barcode, rack, result) {
+function isKnownProduct(code) {
+  return /^B/i.test(code);
+}
+
+function extractProductId(code) {
+  const xIndex = code.indexOf('X');
+  return xIndex !== -1 ? code.substring(0, xIndex) : code;
+}
+
+let pendingCode = null;
+
+function onScanSuccess(decodedText) {
+  if (isScanning) return;
+  const value = decodedText.trim();
+
+  if (scanMode === 'rack') {
+    if (!isRackCode(value)) {
+      showScanWarning('Not a valid rack code. Scan the rack QR.');
+      return;
+    }
+    isScanning = true;
+    handleRackScan(value);
+
+  } else if (scanMode === 'product') {
+    if (isRackCode(value)) {
+      showScanWarning('That is a rack code. Scan a product barcode.');
+      return;
+    }
+    if (isKnownProduct(value)) {
+      isScanning = true;
+      handleProductScan(extractProductId(value));
+    } else {
+      isScanning = true;
+      pendingCode = value;
+      closeScanner();
+      showConfirmation(extractProductId(value));
+    }
+  }
+}
+
+let warnTimer = null;
+function showScanWarning(msg) {
+  const hint = document.getElementById('scanModalHint');
+  const prev = hint.textContent;
+  hint.style.color = 'var(--red)';
+  hint.textContent = '⚠ ' + msg;
+  if (warnTimer) clearTimeout(warnTimer);
+  warnTimer = setTimeout(() => {
+    hint.style.color = '';
+    hint.textContent = prev;
+  }, 2000);
+}
+
+function confirmProduct() {
+  hideConfirmation();
+  if (pendingCode) {
+    handleProductScan(extractProductId(pendingCode));
+    pendingCode = null;
+  }
+}
+
+function rejectProduct() {
+  hideConfirmation();
+  pendingCode = null;
+  isScanning = false;
+  startScan('product');
+}
+
+function showConfirmation(productId) {
+  document.getElementById('confirmCode').textContent = productId;
+  document.getElementById('fsConfirm').classList.add('show');
+}
+
+function hideConfirmation() {
+  document.getElementById('fsConfirm').classList.remove('show');
+}
+
+async function closeScanner() {
+  if (html5QrCode) {
+    try { await html5QrCode.stop(); html5QrCode.clear(); } catch (e) {}
+    html5QrCode = null;
+  }
+  scanModal.style.display = 'none';
+  document.body.style.overflow = '';
+  scanMode = null;
+  isScanning = false;
+  torchOn = false;
+  const btn = document.getElementById('btnTorch');
+  if (btn) { btn.classList.remove('on'); btn.textContent = '🔦'; }
+}
+
+// ═══════════════════════════════════════════
+//  RACK HANDLER
+// ═══════════════════════════════════════════
+
+function handleRackScan(rackCode) {
+  currentRack = rackCode;
+  rackDisplay.textContent = rackCode;
+  rackDisplay.classList.remove('no-rack');
+  rackStatusIcon.classList.add('active');
+  rackLabelBar.style.borderLeftColor = 'var(--green)';
+  startHint.textContent = 'Scanning products for ' + rackCode;
+
+  const banner = document.getElementById('rackBanner');
+  banner.textContent = rackCode;
+  banner.classList.add('show');
+
+  closeScanner();
+  playSound('success');
+
+  showSuccess({
+    title:    'RACK SCANNED',
+    subtitle: rackCode,
+    meta:     'Opening product scanner…',
+    showFinishButton: false,
+  });
+
+  setTimeout(() => {
+    hideSuccess();
+    startScan('product');
+  }, 1800);
+}
+
+// ═══════════════════════════════════════════
+//  PRODUCT HANDLER
+// ═══════════════════════════════════════════
+
+async function handleProductScan(barcode) {
+  await closeScanner();
+  showSaving(true);
+
   try {
-    sheet.appendRow([timestamp, barcode, rack, result]);
+    const result = await saveToSheet(barcode, currentRack);
+    showSaving(false);
+    playSound(result.result === 'Duplicate' ? 'warning' : 'success');
+
+    const isDupe = result.result === 'Duplicate';
+
+    // Track last scan for undo (only track Added/Appended — duplicates have nothing to undo)
+    // Track last scan for undo bar (only for new saves, not duplicates)
+    if (!isDupe) {
+      lastScan = { barcode: barcode, rack: currentRack };
+      showUndoBar(barcode);
+    } else {
+      lastScan = null;
+      hideUndoBar();
+    }
+
+    if (multiMode) {
+      // ── MULTIPLE MODE: stay on product scanner, show finish button ──
+      showSuccess({
+        title:            isDupe ? 'ALREADY ASSIGNED' : 'PRODUCT SAVED',
+        subtitle:         barcode,
+        meta:             isDupe ? 'Already linked to ' + currentRack : 'Saved to ' + currentRack,
+        showFinishButton: true,
+      });
+      // Auto-reopen product scanner after 5s unless worker taps Finish
+      successTimer = setTimeout(() => {
+        hideSuccess();
+        startScan('product');
+      }, 5000);
+
+    } else {
+      // ── DEFAULT MODE: show success briefly then go back to rack scanner ──
+      showSuccess({
+        title:            isDupe ? 'ALREADY ASSIGNED' : 'PRODUCT SAVED',
+        subtitle:         barcode,
+        meta:             isDupe ? 'Already linked to ' + currentRack : 'Saved to ' + currentRack,
+        showFinishButton: false,
+      });
+      // Reset rack state and go back to rack scanner after 1.5s
+      successTimer = setTimeout(() => {
+        hideSuccess();
+        resetRack();
+        startScan('rack');
+      }, 1500);
+    }
+
   } catch (err) {
-    Logger.log('ScanLog write error: ' + err.toString());
+    showSaving(false);
+    playSound('error');
+    alert('Unable to save data. Please try again.');
+    setTimeout(() => startScan('product'), 800);
   }
 }
 
-function getOrCreateSheet(ss, name, headers) {
-  var sheet = ss.getSheetByName(name);
-  if (!sheet) {
-    sheet = ss.insertSheet(name);
-    sheet.appendRow(headers);
-    var headerRange = sheet.getRange(1, 1, 1, headers.length);
-    headerRange.setFontWeight('bold');
-    headerRange.setBackground('#1a1a1a');
-    headerRange.setFontColor('#ffffff');
-    sheet.setFrozenRows(1);
-  }
-  return sheet;
+// ═══════════════════════════════════════════
+//  UNDO LAST SCAN
+// ═══════════════════════════════════════════
+
+function showUndoBar(barcode) {
+  const bar  = document.getElementById('undoBar');
+  const text = document.getElementById('undoBarText');
+  text.textContent = '↩ Last: ' + barcode;
+  bar.classList.add('show');
 }
 
-function formatTimestamp(date) {
-  var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  var d  = date.getDate();
-  var m  = months[date.getMonth()];
-  var y  = date.getFullYear();
-  var hh = String(date.getHours()).padStart(2, '0');
-  var mm = String(date.getMinutes()).padStart(2, '0');
-  return d + '-' + m + '-' + y + ' ' + hh + ':' + mm;
+function hideUndoBar() {
+  document.getElementById('undoBar').classList.remove('show');
+  lastScan = null;
 }
+
+async function undoLastScan() {
+  if (!lastScan) return;
+
+  // Read values FIRST before hideUndoBar clears lastScan
+  const { barcode, rack } = lastScan;
+
+  // Now hide bar (prevents double-tap)
+  hideUndoBar();
+
+  showSaving(true);
+  document.querySelector('.fs-saving-text').textContent = 'UNDOING…';
+
+  try {
+    await undoOnSheet(barcode, rack);
+    document.querySelector('.fs-saving-text').textContent = 'SAVING…';
+    showSaving(false);
+    playSound('warning');
+    // Scanner already open — just show a brief toast-style hint via the hint bar
+    const hint = document.getElementById('scanModalHint');
+    const prev = hint.textContent;
+    hint.style.color = 'var(--amber)';
+    hint.textContent = '✓ Undo successful — ' + barcode + ' removed';
+    setTimeout(() => { hint.style.color = ''; hint.textContent = prev; }, 2500);
+
+  } catch (err) {
+    document.querySelector('.fs-saving-text').textContent = 'SAVING…';
+    showSaving(false);
+    alert('Unable to undo. Please correct manually in the sheet.');
+  }
+}
+
+function undoOnSheet(barcode, rack) {
+  return new Promise((resolve, reject) => {
+    const callbackName = 'cb_' + Date.now();
+    const script = document.createElement('script');
+
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error('Request timed out'));
+    }, 10000);
+
+    function cleanup() {
+      clearTimeout(timer);
+      delete window[callbackName];
+      if (script.parentNode) document.body.removeChild(script);
+    }
+
+    window[callbackName] = function(data) { cleanup(); resolve(data); };
+    script.onerror = () => { cleanup(); reject(new Error('Script load failed')); };
+    script.src = APPS_SCRIPT_URL + '?action=undo&barcode=' + encodeURIComponent(barcode) + '&rack=' + encodeURIComponent(rack) + '&callback=' + callbackName;
+    document.body.appendChild(script);
+  });
+}
+
+// ═══════════════════════════════════════════
+//  MODE TOGGLE
+// ═══════════════════════════════════════════
+
+function onModeToggle() {
+  multiMode = document.getElementById('modeToggle').checked;
+  const label = document.getElementById('modeLabel');
+  const desc  = document.getElementById('modeDesc');
+  if (multiMode) {
+    label.textContent = 'Multiple — Many products per rack';
+    desc.textContent  = 'Stays on product scanner, tap Finish when done';
+  } else {
+    label.textContent = 'Default — One product per rack';
+    desc.textContent  = 'Returns to rack scan after each product';
+  }
+}
+
+// Clears rack state back to initial — used in default mode after each product
+function resetRack() {
+  currentRack = null;
+  rackDisplay.textContent = 'NONE';
+  rackDisplay.classList.add('no-rack');
+  rackStatusIcon.classList.remove('active');
+  rackLabelBar.style.borderLeftColor = 'var(--amber)';
+  startHint.textContent = 'Tap to scan a rack first';
+  document.getElementById('rackBanner').classList.remove('show');
+}
+
+// ═══════════════════════════════════════════
+//  FINISH RACK
+// ═══════════════════════════════════════════
+
+function finishRack() {
+  if (successTimer) { clearTimeout(successTimer); successTimer = null; }
+  hideSuccess();
+  currentRack = null;
+  rackDisplay.textContent = 'NONE';
+  rackDisplay.classList.add('no-rack');
+  rackStatusIcon.classList.remove('active');
+  rackLabelBar.style.borderLeftColor = 'var(--amber)';
+  startHint.textContent = 'Tap to scan a rack first';
+  document.getElementById('rackBanner').classList.remove('show');
+  startScan('rack');
+}
+
+// ═══════════════════════════════════════════
+//  FULLSCREEN OVERLAYS
+// ═══════════════════════════════════════════
+
+function showSuccess({ title, subtitle, meta, showFinishButton }) {
+  fsTitle.textContent     = title;
+  fsSubtitle.textContent  = subtitle;
+  fsMeta.textContent      = meta;
+  btnFinish.style.display = showFinishButton ? 'block' : 'none';
+  fsSuccess.classList.add('show');
+}
+
+function hideSuccess() { fsSuccess.classList.remove('show'); }
+
+function showSaving(show) {
+  if (show) fsSaving.classList.add('show');
+  else      fsSaving.classList.remove('show');
+}
+
+// ═══════════════════════════════════════════
+//  SAVE TO GOOGLE SHEETS (JSONP)
+// ═══════════════════════════════════════════
+
+function saveToSheet(barcode, rack) {
+  return new Promise((resolve, reject) => {
+    const callbackName = 'cb_' + Date.now();
+    const script = document.createElement('script');
+
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error('Request timed out'));
+    }, 10000);
+
+    function cleanup() {
+      clearTimeout(timer);
+      delete window[callbackName];
+      if (script.parentNode) document.body.removeChild(script);
+    }
+
+    window[callbackName] = function(data) { cleanup(); resolve(data); };
+    script.onerror = () => { cleanup(); reject(new Error('Script load failed')); };
+    script.src = APPS_SCRIPT_URL + '?action=save&barcode=' + encodeURIComponent(barcode) + '&rack=' + encodeURIComponent(rack) + '&callback=' + callbackName;
+    document.body.appendChild(script);
+  });
+}
+
+// ═══════════════════════════════════════════
+//  MANUAL ENTRY
+// ═══════════════════════════════════════════
+
+let manualMode = null;
+
+function openManualEntry(mode) {
+  if (mode === 'product' && !currentRack) {
+    alert('Please scan or enter a rack first.');
+    return;
+  }
+  manualMode = mode || 'rack';
+  if (scanModal.style.display === 'flex') closeScanner();
+
+  const title = document.getElementById('manualTitle');
+  const input = document.getElementById('manualInput');
+  const error = document.getElementById('manualError');
+
+  title.textContent = manualMode === 'rack' ? 'ENTER RACK NUMBER' : 'ENTER PRODUCT BARCODE';
+  input.placeholder = manualMode === 'rack' ? 'e.g. S4-C97-6430-A' : 'e.g. B15652 or B15652X0XOCK';
+  input.value = '';
+  input.classList.remove('error');
+  error.textContent = '';
+
+  document.getElementById('fsManual').classList.add('show');
+  setTimeout(() => input.focus(), 200);
+}
+
+function closeManualEntry() {
+  document.getElementById('fsManual').classList.remove('show');
+  manualMode = null;
+}
+
+function submitManualEntry() {
+  const input = document.getElementById('manualInput');
+  const error = document.getElementById('manualError');
+  const value = input.value.trim().toUpperCase();
+
+  if (!value) {
+    error.textContent = 'Please enter a value.';
+    input.classList.add('error');
+    return;
+  }
+
+  if (manualMode === 'rack') {
+    if (!isRackCode(value)) {
+      error.textContent = 'Invalid rack format. Must start with S + number + hyphen (e.g. S4-...)';
+      input.classList.add('error');
+      return;
+    }
+    closeManualEntry();
+    handleRackScan(value);
+
+  } else if (manualMode === 'product') {
+    if (isRackCode(value)) {
+      error.textContent = 'This looks like a rack code, not a product.';
+      input.classList.add('error');
+      return;
+    }
+    closeManualEntry();
+    if (isKnownProduct(value)) {
+      handleProductScan(extractProductId(value));
+    } else {
+      pendingCode = value;
+      showConfirmation(extractProductId(value));
+    }
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const input = document.getElementById('manualInput');
+  if (input) {
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') submitManualEntry(); });
+    input.addEventListener('input',   () => {
+      input.classList.remove('error');
+      document.getElementById('manualError').textContent = '';
+    });
+  }
+});
+
+// ═══════════════════════════════════════════
+//  FLASHLIGHT / TORCH
+// ═══════════════════════════════════════════
+
+async function toggleTorch() {
+  if (!html5QrCode) return;
+  try {
+    torchOn = !torchOn;
+    await html5QrCode.applyVideoConstraints({ advanced: [{ torch: torchOn }] });
+    const btn = document.getElementById('btnTorch');
+    if (torchOn) { btn.classList.add('on'); btn.textContent = '💡'; }
+    else         { btn.classList.remove('on'); btn.textContent = '🔦'; }
+  } catch (e) {
+    console.log('Torch not supported:', e);
+  }
+}
+
+// ═══════════════════════════════════════════
+//  AUDIO FEEDBACK
+// ═══════════════════════════════════════════
+
+function playSound(type) {
+  try {
+    const ctx  = new (window.AudioContext || window.webkitAudioContext)();
+    const osc  = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+    if (type === 'success') {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, ctx.currentTime);
+      osc.frequency.setValueAtTime(1100, ctx.currentTime + 0.1);
+    } else if (type === 'warning') {
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(440, ctx.currentTime);
+      osc.frequency.setValueAtTime(380, ctx.currentTime + 0.15);
+    } else {
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(220, ctx.currentTime);
+    }
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.35);
+  } catch (e) {}
+}
+</script>
+</body>
+</html>
