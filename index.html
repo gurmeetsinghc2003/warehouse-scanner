@@ -597,24 +597,47 @@ body {
   touch-action: manipulation;
 }
 
-/* ── Undo button ── */
-.btn-undo {
-  padding: 14px 32px;
-  background: transparent;
-  color: rgba(255,255,255,0.7);
-  border: 1px solid rgba(255,255,255,0.3);
-  border-radius: var(--radius-lg);
+/* ── Persistent undo bar (shown below scanner hint) ── */
+.undo-bar {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px 10px 20px;
+  background: #2A1F0E;
+  border-top: 1px solid #5C3D00;
+  flex-shrink: 0;
+}
+
+.undo-bar.show { display: flex; }
+
+.undo-bar-text {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--amber);
+  letter-spacing: 0.03em;
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  margin-right: 12px;
+}
+
+.btn-undo-small {
+  background: var(--amber);
+  color: #000;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 14px;
   font-family: var(--font-ui);
-  font-weight: 700;
-  font-size: 15px;
-  letter-spacing: 0.04em;
+  font-weight: 800;
+  font-size: 12px;
+  letter-spacing: 0.05em;
   cursor: pointer;
   touch-action: manipulation;
-  -webkit-user-select: none;
-  user-select: none;
-  transition: background 0.15s;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
-.btn-undo:active { background: rgba(255,255,255,0.15); }
 
 /* ── Saving spinner ── */
 .fs-spinner {
@@ -680,6 +703,11 @@ body {
       <div id="html5qr-code-full-region"></div>
     </div>
     <div class="scan-modal-hint" id="scanModalHint">Point camera at rack QR code</div>
+    <!-- Persistent undo bar — appears after a successful product scan -->
+    <div class="undo-bar" id="undoBar">
+      <span class="undo-bar-text" id="undoBarText">↩ Last: —</span>
+      <button class="btn-undo-small" onclick="undoLastScan()">UNDO</button>
+    </div>
     <button class="manual-link" onclick="openManualEntry(scanMode)" style="background:var(--bg-card);">⌨ Barcode damaged? Enter manually</button>
   </div>
 
@@ -697,9 +725,6 @@ body {
     <div class="fs-meta" id="fsMeta"></div>
     <button class="btn-finish" id="btnFinish" onclick="finishRack()" style="display:none;">
       FINISH THIS RACK
-    </button>
-    <button class="btn-undo" id="btnUndo" onclick="undoLastScan()" style="display:none;">
-      ↩ UNDO LAST SCAN
     </button>
   </div>
 
@@ -968,20 +993,22 @@ async function handleProductScan(barcode) {
     const isDupe = result.result === 'Duplicate';
 
     // Track last scan for undo (only track Added/Appended — duplicates have nothing to undo)
+    // Track last scan for undo bar (only for new saves, not duplicates)
     if (!isDupe) {
       lastScan = { barcode: barcode, rack: currentRack };
+      showUndoBar(barcode);
     } else {
       lastScan = null;
+      hideUndoBar();
     }
 
     if (multiMode) {
-      // ── MULTIPLE MODE: stay on product scanner, show finish + undo buttons ──
+      // ── MULTIPLE MODE: stay on product scanner, show finish button ──
       showSuccess({
         title:            isDupe ? 'ALREADY ASSIGNED' : 'PRODUCT SAVED',
         subtitle:         barcode,
         meta:             isDupe ? 'Already linked to ' + currentRack : 'Saved to ' + currentRack,
         showFinishButton: true,
-        showUndoButton:   !isDupe,
       });
       // Auto-reopen product scanner after 5s unless worker taps Finish
       successTimer = setTimeout(() => {
@@ -996,7 +1023,6 @@ async function handleProductScan(barcode) {
         subtitle:         barcode,
         meta:             isDupe ? 'Already linked to ' + currentRack : 'Saved to ' + currentRack,
         showFinishButton: false,
-        showUndoButton:   !isDupe,
       });
       // Reset rack state and go back to rack scanner after 1.5s
       successTimer = setTimeout(() => {
@@ -1018,50 +1044,45 @@ async function handleProductScan(barcode) {
 //  UNDO LAST SCAN
 // ═══════════════════════════════════════════
 
+function showUndoBar(barcode) {
+  const bar  = document.getElementById('undoBar');
+  const text = document.getElementById('undoBarText');
+  text.textContent = '↩ Last: ' + barcode;
+  bar.classList.add('show');
+}
+
+function hideUndoBar() {
+  document.getElementById('undoBar').classList.remove('show');
+  lastScan = null;
+}
+
 async function undoLastScan() {
   if (!lastScan) return;
 
-  // Cancel auto-dismiss timer so screen stays while undoing
-  if (successTimer) { clearTimeout(successTimer); successTimer = null; }
-  hideSuccess();
+  // Keep scanner open but hide undo bar immediately so cant double-tap
+  hideUndoBar();
 
   const { barcode, rack } = lastScan;
-  lastScan = null;
 
   showSaving(true);
   document.querySelector('.fs-saving-text').textContent = 'UNDOING…';
 
   try {
-    const result = await undoOnSheet(barcode, rack);
+    await undoOnSheet(barcode, rack);
     document.querySelector('.fs-saving-text').textContent = 'SAVING…';
     showSaving(false);
     playSound('warning');
-
-    // Show brief undo confirmation
-    showSuccess({
-      title:            'SCAN UNDONE',
-      subtitle:         barcode,
-      meta:             'Removed from ' + rack,
-      showFinishButton: false,
-      showUndoButton:   false,
-    });
-
-    setTimeout(() => {
-      hideSuccess();
-      if (multiMode) {
-        startScan('product');
-      } else {
-        resetRack();
-        startScan('rack');
-      }
-    }, 1500);
+    // Scanner already open — just show a brief toast-style hint via the hint bar
+    const hint = document.getElementById('scanModalHint');
+    const prev = hint.textContent;
+    hint.style.color = 'var(--amber)';
+    hint.textContent = '✓ Undo successful — ' + barcode + ' removed';
+    setTimeout(() => { hint.style.color = ''; hint.textContent = prev; }, 2500);
 
   } catch (err) {
     document.querySelector('.fs-saving-text').textContent = 'SAVING…';
     showSaving(false);
     alert('Unable to undo. Please correct manually in the sheet.');
-    if (multiMode) startScan('product');
-    else { resetRack(); startScan('rack'); }
   }
 }
 
@@ -1137,12 +1158,11 @@ function finishRack() {
 //  FULLSCREEN OVERLAYS
 // ═══════════════════════════════════════════
 
-function showSuccess({ title, subtitle, meta, showFinishButton, showUndoButton }) {
+function showSuccess({ title, subtitle, meta, showFinishButton }) {
   fsTitle.textContent     = title;
   fsSubtitle.textContent  = subtitle;
   fsMeta.textContent      = meta;
   btnFinish.style.display = showFinishButton ? 'block' : 'none';
-  document.getElementById('btnUndo').style.display = showUndoButton ? 'block' : 'none';
   fsSuccess.classList.add('show');
 }
 
