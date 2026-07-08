@@ -754,7 +754,7 @@ body {
   </div>
 
 <script>
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbz84yJ7ylorEyCoAqwqcacnpFqsWf91yZ9jmp5MQ_352VZOfSj3ZehxRbdHOICIDv8t-Q/exec';
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzDPn2SxFHRvxKLQlmzI8QaBxbQnh6xd4f_IfDSWzwo8oMbQhnoqCJwfSw0fHXL_uvFmw/exec';
 
 // ── State ──
 let currentRack  = null;
