@@ -690,6 +690,12 @@ body {
     </div>
   </main>
 
+  <!-- Persistent undo bar on home screen (default mode) -->
+  <div class="undo-bar" id="undoBarHome" style="position:fixed;bottom:0;left:0;right:0;z-index:50;display:none;align-items:center;justify-content:space-between;padding:12px 16px 12px 20px;background:#2A1F0E;border-top:1px solid #5C3D00;">
+    <span class="undo-bar-text" id="undoBarHomeText">↩ Last: —</span>
+    <button class="btn-undo-small" onclick="undoLastScan()">UNDO</button>
+  </div>
+
   <!-- Camera modal -->
   <div class="scan-modal" id="scanModal" style="display:none;">
     <div class="scan-modal-header">
@@ -754,7 +760,7 @@ body {
   </div>
 
 <script>
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwaoyBOBULcQ61MhcGpkyWcALuAD3bXLoK-rHOK0zcNWy-pgMlnEqgk_PMbxMpl2H-0RQ/exec';
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzDPn2SxFHRvxKLQlmzI8QaBxbQnh6xd4f_IfDSWzwo8oMbQhnoqCJwfSw0fHXL_uvFmw/exec';
 
 // ── State ──
 let currentRack  = null;
@@ -996,10 +1002,18 @@ async function handleProductScan(barcode) {
     // Track last scan for undo bar (only for new saves, not duplicates)
     if (!isDupe) {
       lastScan = { barcode: barcode, rack: currentRack };
-      showUndoBar(barcode);
+      // Show undo bar in scanner for multi mode, on home screen for default mode
+      if (multiMode) {
+        showUndoBar(barcode);        // inside scanner
+        hideUndoBarHome();
+      } else {
+        showUndoBarHome(barcode);    // on home screen after redirect
+        hideUndoBar();
+      }
     } else {
       lastScan = null;
       hideUndoBar();
+      hideUndoBarHome();
     }
 
     if (multiMode) {
@@ -1053,16 +1067,27 @@ function showUndoBar(barcode) {
 
 function hideUndoBar() {
   document.getElementById('undoBar').classList.remove('show');
-  lastScan = null;
+}
+
+function showUndoBarHome(barcode) {
+  const bar  = document.getElementById('undoBarHome');
+  const text = document.getElementById('undoBarHomeText');
+  text.textContent = '↩ Last: ' + barcode;
+  bar.style.display = 'flex';
+}
+
+function hideUndoBarHome() {
+  document.getElementById('undoBarHome').style.display = 'none';
 }
 
 async function undoLastScan() {
   if (!lastScan) return;
 
-  // Keep scanner open but hide undo bar immediately so cant double-tap
-  hideUndoBar();
-
+  // Read values FIRST then clear lastScan to prevent double-tap
   const { barcode, rack } = lastScan;
+  lastScan = null;
+  hideUndoBar();
+  hideUndoBarHome();
 
   showSaving(true);
   document.querySelector('.fs-saving-text').textContent = 'UNDOING…';
@@ -1135,6 +1160,7 @@ function resetRack() {
   rackLabelBar.style.borderLeftColor = 'var(--amber)';
   startHint.textContent = 'Tap to scan a rack first';
   document.getElementById('rackBanner').classList.remove('show');
+  // Keep undo bar visible — user may still want to undo on home screen
 }
 
 // ═══════════════════════════════════════════
