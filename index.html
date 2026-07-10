@@ -795,9 +795,11 @@ function startScan(mode) {
   scanMode = mode;
   isScanning = false;
 
+  // Clear home undo bar when starting a new rack scan
   if (mode === 'rack') {
     scanModalMode.textContent = 'SCAN RACK';
     scanModalHint.textContent = 'Point camera at rack QR code';
+    hideUndoBarHome();
   } else {
     scanModalMode.textContent = 'SCAN PRODUCT';
     scanModalHint.textContent = 'Rack: ' + currentRack + ' · Point at product barcode';
@@ -1031,18 +1033,19 @@ async function handleProductScan(barcode) {
       }, 5000);
 
     } else {
-      // ── DEFAULT MODE: show success briefly then go back to rack scanner ──
+      // ── DEFAULT MODE: show success briefly then return to HOME SCREEN ──
+      // Undo bar is shown on home screen so worker can undo before next rack
       showSuccess({
         title:            isDupe ? 'ALREADY ASSIGNED' : 'PRODUCT SAVED',
         subtitle:         barcode,
         meta:             isDupe ? 'Already linked to ' + currentRack : 'Saved to ' + currentRack,
         showFinishButton: false,
       });
-      // Reset rack state and go back to rack scanner after 1.5s
+      // Go back to home screen after 1.5s — worker taps START SCANNING for next rack
       successTimer = setTimeout(() => {
         hideSuccess();
         resetRack();
-        startScan('rack');
+        // Undo bar already set above — it will be visible on home screen now
       }, 1500);
     }
 
